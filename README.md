@@ -2,11 +2,16 @@
 
 Full-stack geospatial dashboard for carbon and biodiversity projects.
 
-## Current status
+## Current progress
 
-- Phase 0 bootstrap complete.
-- Phase 1 authentication backend complete with tests.
-- Frontend scaffold ready for dashboard implementation.
+- Phase 0: complete — repository, uv, Ruff, hooks, CI, PostGIS compose.
+- Phase 1: complete — JWT authentication API and UI.
+- Phase 2: complete — project creation, listing, and ownership isolation.
+- Phase 3: next — PostGIS sites and Mapbox polygon drawing.
+- Phase 4: planned — metrics and analytics chart.
+- Phase 5: planned — deployment and submission QA.
+
+See [`docs/PROGRESS.md`](docs/PROGRESS.md) for task-level status and [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) for implementation conventions.
 
 ## Repository layout
 
@@ -90,7 +95,8 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs:
 
 ## Next implementation steps
 
-1. Add project CRUD backend and ownership checks.
-2. Add site polygon API with PostGIS geometry conversion.
-3. Build dashboard UI with project list and map rendering.
-4. Add site analytics endpoint and chart view.
+1. Add PostGIS site model, migrations, and GeoJSON validation.
+2. Add site create/list/detail endpoints with ownership checks.
+3. Add Mapbox polygon drawing and saved site layers.
+4. Add site analytics endpoint, seed metrics, and Chart.js view.
+5. Deploy and complete reviewer smoke test.
