@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 
+from geoalchemy2 import Geometry
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .config import settings
 from .database import Base
 
 
@@ -41,7 +43,14 @@ class Site(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
     geometry_json: Mapped[str] = mapped_column(Text)
+    geometry: Mapped[object | None] = mapped_column(
+        Geometry(geometry_type="POLYGON", srid=4326)
+        if settings.database_url.startswith("postgresql")
+        else Text(),
+        nullable=True,
+    )
     area_hectares: Mapped[float] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 

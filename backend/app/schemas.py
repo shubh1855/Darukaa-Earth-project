@@ -78,7 +78,16 @@ def validate_geojson_polygon(geometry: dict[str, Any]) -> dict[str, Any]:
 
 
 class SiteCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
     geometry: dict[str, Any]
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name must not be blank")
+        return normalized
 
     @field_validator("geometry")
     @classmethod
@@ -89,6 +98,7 @@ class SiteCreateRequest(BaseModel):
 class SiteListResponse(BaseModel):
     id: int
     project_id: int
+    name: str
     geometry: dict[str, Any]
     area_hectares: float
     created_at: datetime

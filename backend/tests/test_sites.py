@@ -34,12 +34,13 @@ def test_create_list_and_get_site(client: TestClient):
 
     create_response = client.post(
         f"/api/projects/{project_id}/sites",
-        json={"geometry": _polygon()},
+        json={"name": "Mangrove site", "geometry": _polygon()},
         headers=headers,
     )
     assert create_response.status_code == 201
     created = create_response.json()
     assert created["project_id"] == project_id
+    assert created["name"] == "Mangrove site"
     assert created["geometry"]["type"] == "Polygon"
     assert created["area_hectares"] == 12364.0
 
@@ -67,7 +68,7 @@ def test_site_access_isolated_by_project_owner(client: TestClient):
 
     create_site = client.post(
         f"/api/projects/{project_id}/sites",
-        json={"geometry": _polygon()},
+        json={"name": "Mangrove site", "geometry": _polygon()},
         headers=owner_headers,
     )
     assert create_site.status_code == 201
@@ -77,7 +78,7 @@ def test_site_access_isolated_by_project_owner(client: TestClient):
     assert (
         client.post(
             f"/api/projects/{project_id}/sites",
-            json={"geometry": _polygon()},
+            json={"name": "Mangrove site", "geometry": _polygon()},
             headers=other_headers,
         ).status_code
         == 404

@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from geoalchemy2.elements import WKTElement
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import create_access_token, get_current_user, hash_password, verify_password
@@ -95,6 +96,11 @@ def create_project(
     return project
 
 
+def _geojson_to_wkt(geometry: dict) -> WKTElement:
+    coordinates = ", ".join(f"{lon} {lat}" for lon, lat in geometry["coordinates"][0])
+    return WKTElement(f"POLYGON (({coordinates}))", srid=4326)
+
+
 def _compute_polygon_area_hectares(geometry: dict) -> float:
     ring = geometry["coordinates"][0]
     area_degrees = 0.0
@@ -120,6 +126,7 @@ def _to_site_response(site: Site) -> SiteDetailResponse:
     return SiteDetailResponse(
         id=site.id,
         project_id=site.project_id,
+        name=site.name,
         geometry=json.loads(site.geometry_json),
         area_hectares=site.area_hectares,
         created_at=site.created_at,
@@ -146,12 +153,26 @@ def create_site_for_project(
 ):
     project = _get_owned_project_or_404(project_id=id, user_id=user.id, db=db)
 
+    database_dialect = db.get_bind().dialect.name
     site = Site(
         project_id=project.id,
+        name=payload.name,
         geometry_json=json.dumps(payload.geometry),
+        geometry=_geojson_to_wkt(payload.geometry) if database_dialect == "postgresql" else None,
         area_hectares=_compute_polygon_area_hectares(payload.geometry),
     )
     db.add(site)
+    db.flush()
+
+    if database_dialect == "postgresql":
+        projected_area = db.scalar(
+            select(func.ST_Area(func.ST_Transform(site.geometry, 6933)) / 10000).where(
+                Site.id == site.id
+            )
+        )
+        if projected_area is not None:
+            site.area_hectares = float(projected_area)
+
     db.commit()
     db.refresh(site)
 
