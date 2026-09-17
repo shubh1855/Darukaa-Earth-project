@@ -467,12 +467,10 @@ Implement in vertical slices. Each slice must leave repository runnable and incl
 
 ```bash
 cp .env.example .env
- docker compose up -d db
-python -m venv .venv
-. .venv/bin/activate
-pip install -r backend/requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload --app-dir backend
+docker compose -f database/docker-compose.yml up -d
+uv sync --project backend --group dev
+PYTHONPATH=backend uv run --project backend alembic upgrade head
+PYTHONPATH=backend uv run --project backend uvicorn app.main:app --reload --app-dir backend
 ```
 
 In a second terminal:
