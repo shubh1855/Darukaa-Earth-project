@@ -360,6 +360,24 @@ function Dashboard({
 
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
 
+  function focusSite(site: Site) {
+    const ring = site.geometry.coordinates[0];
+    const longitudes = ring.map(([longitude]) => longitude);
+    const latitudes = ring.map(([, latitude]) => latitude);
+    const minLongitude = Math.min(...longitudes);
+    const maxLongitude = Math.max(...longitudes);
+    const minLatitude = Math.min(...latitudes);
+    const maxLatitude = Math.max(...latitudes);
+
+    mapRef.current?.fitBounds(
+      [
+        [minLongitude, minLatitude],
+        [maxLongitude, maxLatitude],
+      ],
+      { padding: 72, maxZoom: 12, duration: 500 },
+    );
+  }
+
   useEffect(() => {
     if (!mapRef.current || sites.length === 0) {
       return;
@@ -498,8 +516,16 @@ function Dashboard({
           <ul className="site-list">
             {sites.map((site) => (
               <li key={site.id}>
-                <strong>Site #{site.id}</strong>
-                <p>Area: {site.area_hectares.toFixed(2)} ha</p>
+                <button
+                  className="site-item"
+                  type="button"
+                  onClick={() => focusSite(site)}
+                >
+                  <strong>Site #{site.id}</strong>
+                  <span>
+                    Area: {site.area_hectares.toFixed(2)} ha · Show on map
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
