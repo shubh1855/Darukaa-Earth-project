@@ -41,13 +41,11 @@ Minimum variables:
 docker compose -f database/docker-compose.yml up -d
 ```
 
-### Backend
+### Backend (uv)
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn app.main:app --reload --app-dir backend
+uv sync --project backend --group dev
+PYTHONPATH=backend uv run --project backend uvicorn app.main:app --reload --app-dir backend
 ```
 
 Backend health check:
@@ -78,6 +76,7 @@ npm run prepare
 ```bash
 npm run lint
 npm run format:check
+npm run lint:backend
 npm run test:backend
 ```
 
@@ -86,7 +85,7 @@ npm run test:backend
 GitHub Actions workflow at `.github/workflows/ci.yml` runs:
 
 - Frontend lint/build when `frontend/package-lock.json` exists.
-- Backend Ruff + pytest when `backend/requirements.txt` exists.
+- Backend uv sync, Ruff, and pytest when `backend/requirements.txt` exists.
 - Integration marker tests against PostGIS service.
 
 ## Next implementation steps

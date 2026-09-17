@@ -217,16 +217,16 @@ Indexes:
 
 ### 4.5 API contract
 
-| Method | Route | Auth | Purpose |
-|---|---|---:|---|
-| `GET` | `/api/health` | No | Health check |
-| `POST` | `/api/auth/register` | No | Create account and return token |
-| `POST` | `/api/auth/login` | No | Verify credentials and return token |
-| `GET` | `/api/projects` | Yes | List owned projects with site counts |
-| `POST` | `/api/projects` | Yes | Create project |
-| `GET` | `/api/projects/{id}/sites` | Yes | List sites for owned project |
-| `POST` | `/api/projects/{id}/sites` | Yes | Validate and create polygon site |
-| `GET` | `/api/sites/{id}` | Yes | Return site and ordered metrics |
+| Method | Route                      | Auth | Purpose                              |
+| ------ | -------------------------- | ---: | ------------------------------------ |
+| `GET`  | `/api/health`              |   No | Health check                         |
+| `POST` | `/api/auth/register`       |   No | Create account and return token      |
+| `POST` | `/api/auth/login`          |   No | Verify credentials and return token  |
+| `GET`  | `/api/projects`            |  Yes | List owned projects with site counts |
+| `POST` | `/api/projects`            |  Yes | Create project                       |
+| `GET`  | `/api/projects/{id}/sites` |  Yes | List sites for owned project         |
+| `POST` | `/api/projects/{id}/sites` |  Yes | Validate and create polygon site     |
+| `GET`  | `/api/sites/{id}`          |  Yes | Return site and ordered metrics      |
 
 Example site request:
 
@@ -235,7 +235,14 @@ Example site request:
   "name": "North restoration block",
   "geometry": {
     "type": "Polygon",
-    "coordinates": [[[77.59, 12.97], [77.60, 12.97], [77.60, 12.98], [77.59, 12.97]]]
+    "coordinates": [
+      [
+        [77.59, 12.97],
+        [77.6, 12.97],
+        [77.6, 12.98],
+        [77.59, 12.97]
+      ]
+    ]
   }
 }
 ```
@@ -247,10 +254,10 @@ Example site response:
   "id": 12,
   "project_id": 3,
   "name": "North restoration block",
-  "geometry": {"type": "Polygon", "coordinates": []},
+  "geometry": { "type": "Polygon", "coordinates": [] },
   "area_hectares": 12.4,
   "metrics": [
-    {"period": "2024-01", "carbon_tonnes": 42.1, "biodiversity_score": 68.0}
+    { "period": "2024-01", "carbon_tonnes": 42.1, "biodiversity_score": 68.0 }
   ]
 }
 ```
