@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import globals from 'globals';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -14,6 +15,7 @@ export default [
         ecmaVersion: 'latest',
         sourceType: 'module',
       },
+      globals: globals.browser,
     },
     plugins: {
       '@typescript-eslint': tseslint,
@@ -23,6 +25,7 @@ export default [
       ...tseslint.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-undef': 'off',
     },
   },
   prettier,
