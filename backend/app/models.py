@@ -42,6 +42,15 @@ class SpatialGeometry(TypeDecorator):
     impl = Text
     cache_ok = True
 
+    # GeoAlchemy inspects the declared type during PostgreSQL DDL events,
+    # before SQLAlchemy replaces the implementation with Geometry.
+    geometry_type = "POLYGON"
+    srid = 4326
+    dimension = 2
+    spatial_index = False
+    use_N_D_index = False
+    use_typmod = True
+
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(Geometry(geometry_type="POLYGON", srid=4326))
