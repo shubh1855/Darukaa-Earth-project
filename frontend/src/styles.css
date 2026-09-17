@@ -38,7 +38,7 @@ p {
 }
 
 .dashboard-layout {
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
@@ -74,16 +74,19 @@ label {
 
 input,
 textarea,
+select,
 button {
   font: inherit;
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid #c8d8cd;
   border-radius: 8px;
   padding: 0.6rem 0.7rem;
+  background: #fff;
 }
 
 button {
@@ -113,7 +116,8 @@ button:disabled {
   margin-top: 0.5rem;
 }
 
-.project-list {
+.project-list,
+.site-list {
   margin: 1rem 0 0;
   padding: 0;
   list-style: none;
@@ -121,13 +125,27 @@ button:disabled {
   gap: 0.75rem;
 }
 
-.project-list li {
+.project-list li,
+.site-list li {
   border: 1px solid #e1ebe3;
   border-radius: 8px;
   padding: 0.7rem;
 }
 
-.project-list p {
+.project-list p,
+.site-list p {
   margin-top: 0.2rem;
   color: #52625b;
+}
+
+.selected-item {
+  border-color: #126149 !important;
+}
+
+.map-wrap {
+  margin-top: 0.75rem;
+  height: 360px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #d7e4da;
 }
