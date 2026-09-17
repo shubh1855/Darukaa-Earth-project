@@ -9,8 +9,10 @@ import {
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import Map, { Layer, MapRef, Source } from "react-map-gl";
+import MapboxDraw from "@mapbox/mapbox-gl-draw";
 
 import "mapbox-gl/dist/mapbox-gl.css";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import "./styles.css";
 
 type TokenResponse = { access_token: string; token_type: string };
@@ -29,6 +31,7 @@ type PolygonGeometry = {
 type Site = {
   id: number;
   project_id: number;
+  name: string;
   geometry: PolygonGeometry;
   area_hectares: number;
   created_at: string;
@@ -211,9 +214,13 @@ function Dashboard({
   );
   const [sites, setSites] = useState<Site[]>([]);
   const mapRef = useRef<MapRef | null>(null);
+  const siteNameInputRef = useRef<HTMLInputElement | null>(null);
+  const drawRef = useRef<MapboxDraw | null>(null);
   const [loadingSites, setLoadingSites] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
-  const [siteGeometryInput, setSiteGeometryInput] = useState(SAMPLE_POLYGON);
+  const [siteName, setSiteName] = useState("");
+  const [siteGeometryInput, setSiteGeometryInput] = useState("");
+  const [drawUnavailable, setDrawUnavailable] = useState(false);
   const [creatingSite, setCreatingSite] = useState(false);
   const [createSiteError, setCreateSiteError] = useState<string | null>(null);
 
@@ -307,29 +314,76 @@ function Dashboard({
       return;
     }
 
+    if (!siteName.trim()) {
+      setCreateSiteError("Site name is required.");
+      siteNameInputRef.current?.focus();
+      return;
+    }
+
     let geometry: PolygonGeometry;
     try {
-      geometry = JSON.parse(siteGeometryInput) as PolygonGeometry;
+      const parsedGeometry = JSON.parse(siteGeometryInput) as PolygonGeometry;
+      if (
+        parsedGeometry.type !== "Polygon" ||
+        !Array.isArray(parsedGeometry.coordinates) ||
+        parsedGeometry.coordinates.length === 0
+      ) {
+        throw new Error("not a polygon");
+      }
+      geometry = parsedGeometry;
     } catch {
-      setCreateSiteError("Geometry must be valid JSON.");
+      setCreateSiteError("Draw a polygon or enter valid Polygon GeoJSON.");
       return;
     }
 
     setCreatingSite(true);
     try {
-      const createdSite = await request<Site>(
+      await request<Site>(
         `/projects/${selectedProjectId}/sites`,
         {
           method: "POST",
-          body: JSON.stringify({ geometry }),
+          body: JSON.stringify({ name: siteName.trim(), geometry }),
         },
         token,
       );
-      setSites((current) => [createdSite, ...current]);
+      setSiteName("");
+      setSiteGeometryInput("");
+      await loadSites();
     } catch (requestError) {
       setCreateSiteError((requestError as Error).message);
     } finally {
       setCreatingSite(false);
+    }
+  }
+
+  function handleDrawCreate(event: MapboxDraw.DrawCreateEvent) {
+    const feature = event.features[0];
+    if (!feature || feature.geometry.type !== "Polygon") {
+      setCreateSiteError("Only polygon sites are supported.");
+      return;
+    }
+
+    setCreateSiteError(null);
+    setSiteGeometryInput(JSON.stringify(feature.geometry, null, 2));
+    siteNameInputRef.current?.focus();
+  }
+
+  function handleMapLoad() {
+    if (!mapRef.current || drawRef.current) {
+      return;
+    }
+
+    try {
+      const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: { polygon: true, trash: true },
+      });
+      const map = mapRef.current.getMap();
+      map.addControl(draw, "top-left");
+      map.on("draw.create", handleDrawCreate);
+      drawRef.current = draw;
+    } catch {
+      setDrawUnavailable(true);
     }
   }
 
@@ -521,7 +575,7 @@ function Dashboard({
                   type="button"
                   onClick={() => focusSite(site)}
                 >
-                  <strong>Site #{site.id}</strong>
+                  <strong>{site.name}</strong>
                   <span>
                     Area: {site.area_hectares.toFixed(2)} ha · Show on map
                   </span>
@@ -550,6 +604,7 @@ function Dashboard({
                 zoom: 3.2,
               }}
               mapStyle="mapbox://styles/mapbox/light-v11"
+              onLoad={handleMapLoad}
             >
               <Source id="sites" type="geojson" data={siteGeoJson}>
                 <Layer {...siteFillLayer} />
@@ -562,16 +617,40 @@ function Dashboard({
 
       <section className="card">
         <h2>Create site</h2>
+        {!MAPBOX_TOKEN || drawUnavailable ? (
+          <p>
+            {MAPBOX_TOKEN
+              ? "Map drawing is unavailable. Enter a Polygon GeoJSON manually."
+              : "Set VITE_MAPBOX_TOKEN to draw on the map, or enter a Polygon GeoJSON manually."}
+          </p>
+        ) : (
+          <p>Use the polygon tool on the map, then enter a name below.</p>
+        )}
         <form onSubmit={createSite} className="project-form">
           <label>
-            GeoJSON Polygon
-            <textarea
-              value={siteGeometryInput}
-              onChange={(event) => setSiteGeometryInput(event.target.value)}
-              rows={10}
-              spellCheck={false}
+            Site name
+            <input
+              ref={siteNameInputRef}
+              value={siteName}
+              onChange={(event) => setSiteName(event.target.value)}
+              minLength={1}
+              maxLength={120}
+              required
             />
           </label>
+
+          {!MAPBOX_TOKEN || drawUnavailable ? (
+            <label>
+              GeoJSON Polygon
+              <textarea
+                value={siteGeometryInput || SAMPLE_POLYGON}
+                onChange={(event) => setSiteGeometryInput(event.target.value)}
+                rows={10}
+                spellCheck={false}
+              />
+            </label>
+          ) : null}
+
           <button type="submit" disabled={creatingSite || !selectedProjectId}>
             {creatingSite ? "Creating site..." : "Create site"}
           </button>
