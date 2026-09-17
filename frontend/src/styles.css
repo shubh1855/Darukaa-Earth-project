@@ -142,6 +142,43 @@ button:disabled {
   border-color: #126149 !important;
 }
 
+.project-item {
+  width: 100%;
+  display: grid;
+  gap: 0.2rem;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+}
+
+.project-item span {
+  color: #52625b;
+}
+
+.entry-mode {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.mode-button,
+.mode-active {
+  border: 1px solid #126149;
+  background: #fff;
+  color: #126149;
+}
+
+.mode-active {
+  background: #126149;
+  color: #fff;
+}
+
+small {
+  color: #52625b;
+}
+
 .site-item {
   width: 100%;
   display: grid;

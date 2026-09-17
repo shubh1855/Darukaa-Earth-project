@@ -220,6 +220,12 @@ function Dashboard({
   const [sitesError, setSitesError] = useState<string | null>(null);
   const [siteName, setSiteName] = useState("");
   const [siteGeometryInput, setSiteGeometryInput] = useState("");
+  const [coordinateInput, setCoordinateInput] = useState(
+    "77.58, 12.97\n77.60, 12.97\n77.60, 12.99\n77.58, 12.99",
+  );
+  const [siteEntryMode, setSiteEntryMode] = useState<"draw" | "coordinates">(
+    "draw",
+  );
   const [drawUnavailable, setDrawUnavailable] = useState(false);
   const [creatingSite, setCreatingSite] = useState(false);
   const [createSiteError, setCreateSiteError] = useState<string | null>(null);
@@ -322,15 +328,36 @@ function Dashboard({
 
     let geometry: PolygonGeometry;
     try {
-      const parsedGeometry = JSON.parse(siteGeometryInput) as PolygonGeometry;
-      if (
-        parsedGeometry.type !== "Polygon" ||
-        !Array.isArray(parsedGeometry.coordinates) ||
-        parsedGeometry.coordinates.length === 0
-      ) {
-        throw new Error("not a polygon");
+      if (siteEntryMode === "coordinates") {
+        const coordinates = coordinateInput
+          .split("\n")
+          .map((line) => line.split(",").map((value) => Number(value.trim())))
+          .filter(
+            (point) => point.length === 2 && point.every(Number.isFinite),
+          );
+
+        if (coordinates.length < 3) {
+          throw new Error("at least three coordinate pairs are required");
+        }
+
+        const first = coordinates[0];
+        const last = coordinates[coordinates.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          coordinates.push([...first]);
+        }
+
+        geometry = { type: "Polygon", coordinates: [coordinates] };
+      } else {
+        const parsedGeometry = JSON.parse(siteGeometryInput) as PolygonGeometry;
+        if (
+          parsedGeometry.type !== "Polygon" ||
+          !Array.isArray(parsedGeometry.coordinates) ||
+          parsedGeometry.coordinates.length === 0
+        ) {
+          throw new Error("not a polygon");
+        }
+        geometry = parsedGeometry;
       }
-      geometry = parsedGeometry;
     } catch {
       setCreateSiteError("Draw a polygon or enter valid Polygon GeoJSON.");
       return;
@@ -364,6 +391,7 @@ function Dashboard({
     }
 
     setCreateSiteError(null);
+    setSiteEntryMode("draw");
     setSiteGeometryInput(JSON.stringify(feature.geometry, null, 2));
     siteNameInputRef.current?.focus();
   }
@@ -539,8 +567,14 @@ function Dashboard({
                     project.id === selectedProjectId ? "selected-item" : ""
                   }
                 >
-                  <strong>{project.name}</strong>
-                  <p>{project.description || "No description"}</p>
+                  <button
+                    className="project-item"
+                    type="button"
+                    onClick={() => setSelectedProjectId(project.id)}
+                  >
+                    <strong>{project.name}</strong>
+                    <span>{project.description || "No description"}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -626,6 +660,29 @@ function Dashboard({
         ) : (
           <p>Use the polygon tool on the map, then enter a name below.</p>
         )}
+        <div
+          className="entry-mode"
+          role="group"
+          aria-label="Site boundary input method"
+        >
+          <button
+            type="button"
+            className={siteEntryMode === "draw" ? "mode-active" : "mode-button"}
+            onClick={() => setSiteEntryMode("draw")}
+            disabled={!MAPBOX_TOKEN || drawUnavailable}
+          >
+            Draw on map
+          </button>
+          <button
+            type="button"
+            className={
+              siteEntryMode === "coordinates" ? "mode-active" : "mode-button"
+            }
+            onClick={() => setSiteEntryMode("coordinates")}
+          >
+            Enter coordinates
+          </button>
+        </div>
         <form onSubmit={createSite} className="project-form">
           <label>
             Site name
@@ -639,13 +696,30 @@ function Dashboard({
             />
           </label>
 
-          {!MAPBOX_TOKEN || drawUnavailable ? (
+          {siteEntryMode === "coordinates" ? (
             <label>
-              GeoJSON Polygon
+              Coordinates (one longitude, latitude pair per line)
+              <textarea
+                value={coordinateInput}
+                onChange={(event) => setCoordinateInput(event.target.value)}
+                rows={5}
+                spellCheck={false}
+                placeholder={
+                  "77.58, 12.97\\n77.60, 12.97\\n77.60, 12.99\\n77.58, 12.99"
+                }
+              />
+              <small>
+                The first point closes automatically. Use at least three points.
+              </small>
+            </label>
+          ) : null}
+          {siteEntryMode === "draw" && (!MAPBOX_TOKEN || drawUnavailable) ? (
+            <label>
+              GeoJSON Polygon fallback
               <textarea
                 value={siteGeometryInput || SAMPLE_POLYGON}
                 onChange={(event) => setSiteGeometryInput(event.target.value)}
-                rows={10}
+                rows={8}
                 spellCheck={false}
               />
             </label>
