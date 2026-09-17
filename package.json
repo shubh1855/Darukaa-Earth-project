@@ -6,8 +6,8 @@
   "scripts": {
     "prepare": "husky",
     "lint": "npm --prefix frontend run lint",
-    "format:check": "prettier --check README.md \"frontend/**/*.{ts,tsx,css,json,md}\" docs/**/*.md",
-    "format": "prettier --write README.md \"frontend/**/*.{ts,tsx,css,json,md}\" docs/**/*.md",
+    "format:check": "prettier --check \"frontend/**/*.{ts,tsx,css,json}\"",
+    "format": "prettier --write \"frontend/**/*.{ts,tsx,css,json}\"",
     "test:backend": "PYTHONPATH=backend uv run --project backend pytest backend/tests",
     "lint:backend": "PYTHONPATH=backend uv run --project backend ruff check backend",
     "format:backend": "PYTHONPATH=backend uv run --project backend ruff format backend",
@@ -20,8 +20,7 @@
   },
   "lint-staged": {
     "frontend/**/*.{ts,tsx}": ["npm --prefix frontend exec -- eslint --config frontend/eslint.config.js --fix", "prettier --write"],
-    "frontend/**/*.{css,json,md}": ["prettier --write"],
-    "docs/**/*.md": ["prettier --write"],
+    "frontend/**/*.{css,json}": ["prettier --write"],
     "backend/**/*.py": ["uv run --project backend ruff check --fix", "uv run --project backend ruff format"]
   }
 }
