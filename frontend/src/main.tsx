@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  MouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -38,8 +39,21 @@ type Site = {
   created_at: string;
 };
 
-type DrawMode =
-  "draw_polygon" | "draw_freehand" | "direct_select" | "simple_select";
+type SitePointFeatureCollection = {
+  type: "FeatureCollection";
+  features: Array<{
+    type: "Feature";
+    properties: {
+      siteId: number;
+      siteName: string;
+      areaHectares: number;
+    };
+    geometry: {
+      type: "Point";
+      coordinates: [number, number];
+    };
+  }>;
+};
 
 type SiteFeatureCollection = {
   type: "FeatureCollection";
@@ -88,6 +102,38 @@ const drawModes = {
   ...MapboxDraw.modes,
   draw_freehand: FreehandMode as unknown as MapboxDraw.DrawCustomMode,
 } as unknown as { [modeKey: string]: MapboxDraw.DrawCustomMode };
+
+const sitePointLayer = {
+  id: "site-points",
+  type: "circle",
+  paint: {
+    "circle-color": "#126149",
+    "circle-radius": 5,
+    "circle-stroke-color": "#ffffff",
+    "circle-stroke-width": 1.5,
+  },
+} as const;
+
+const draftLineLayer = {
+  id: "draft-line",
+  type: "line",
+  paint: {
+    "line-color": "#0f8a62",
+    "line-width": 2,
+    "line-dasharray": [2, 1] as number[],
+  },
+} as const;
+
+const draftPointLayer = {
+  id: "draft-points",
+  type: "circle",
+  paint: {
+    "circle-color": "#ffffff",
+    "circle-stroke-color": "#0f8a62",
+    "circle-stroke-width": 2,
+    "circle-radius": 5,
+  },
+} as const;
 
 const siteOutlineLayer = {
   id: "site-outline",
@@ -205,6 +251,19 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   );
 }
 
+function ThemeIcon({ kind }: { kind: "sun" | "moon" }) {
+  return kind === "sun" ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M20.5 15.2A8.5 8.5 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z" />
+    </svg>
+  );
+}
+
 function Dashboard({
   token,
   onLogout,
@@ -222,6 +281,7 @@ function Dashboard({
     null,
   );
   const [sites, setSites] = useState<Site[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
   const mapRef = useRef<MapRef | null>(null);
   const siteNameInputRef = useRef<HTMLInputElement | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -236,14 +296,28 @@ function Dashboard({
     "draw",
   );
   const [drawUnavailable, setDrawUnavailable] = useState(false);
-  const [activeDrawMode, setActiveDrawMode] = useState<DrawMode | null>(null);
+  const [drawTool, setDrawTool] = useState<"point" | "freehand" | null>(
+    "point",
+  );
+  const [draftPoints, setDraftPoints] = useState<Array<[number, number]>>([]);
   const [drawStats, setDrawStats] = useState<{
     area: number;
     x: number;
     y: number;
   } | null>(null);
+  const [hoverSiteInfo, setHoverSiteInfo] = useState<{
+    siteName: string;
+    areaHectares: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [darkMode, setDarkMode] = useState(false);
   const [creatingSite, setCreatingSite] = useState(false);
   const [createSiteError, setCreateSiteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+  }, [darkMode]);
 
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
@@ -275,6 +349,17 @@ function Dashboard({
       return projects[0].id;
     });
   }, [projects]);
+
+  useEffect(() => {
+    setSelectedSiteId(null);
+    setDrawStats(null);
+    setHoverSiteInfo(null);
+    setSiteGeometryInput("");
+    setDraftPoints([]);
+    setCreateSiteError(null);
+    drawRef.current?.deleteAll();
+    changeDrawMode("simple_select");
+  }, [selectedProjectId]);
 
   const loadSites = useCallback(async () => {
     if (!selectedProjectId) {
@@ -393,7 +478,6 @@ function Dashboard({
       setDrawStats(null);
       drawRef.current?.deleteAll();
       changeDrawMode("simple_select");
-      setActiveDrawMode("simple_select");
       await loadSites();
     } catch (requestError) {
       setCreateSiteError((requestError as Error).message);
@@ -402,13 +486,8 @@ function Dashboard({
     }
   }
 
-  function calculateDrawArea(feature: GeoJSON.Feature): number | null {
-    if (feature.geometry.type !== "Polygon") {
-      return null;
-    }
-
-    const ring = feature.geometry.coordinates[0] as number[][];
-    if (ring.length < 3) {
+  function calculateAreaFromRing(ring: number[][]): number | null {
+    if (ring.length < 4) {
       return null;
     }
 
@@ -420,6 +499,15 @@ function Dashboard({
     }
 
     return Math.abs(area) * 0.5 * 12364;
+  }
+
+  function calculateDrawArea(feature: GeoJSON.Feature): number | null {
+    if (feature.geometry.type !== "Polygon") {
+      return null;
+    }
+
+    const ring = feature.geometry.coordinates[0] as number[][];
+    return calculateAreaFromRing(ring);
   }
 
   function updateDrawStats(point?: { x: number; y: number }) {
@@ -452,46 +540,83 @@ function Dashboard({
     setSiteEntryMode("draw");
     setSiteGeometryInput(JSON.stringify(feature.geometry, null, 2));
     changeDrawMode("direct_select", { featureId: feature.id });
-    setActiveDrawMode("direct_select");
+    setDrawTool(null);
     setDrawStats(null);
     siteNameInputRef.current?.focus();
   }
 
-  function finishDrawing() {
+  function finishPointByPointDrawing(
+    closePoint: [number, number],
+    point: { x: number; y: number },
+  ) {
+    if (draftPoints.length < 3) {
+      setCreateSiteError("Add at least three points before closing polygon.");
+      return;
+    }
+
+    const ring = [...draftPoints, closePoint] as number[][];
+    const geometry: PolygonGeometry = {
+      type: "Polygon",
+      coordinates: [ring],
+    };
+    setSiteEntryMode("draw");
+    setSiteGeometryInput(JSON.stringify(geometry, null, 2));
+    setDraftPoints([]);
+    setDrawTool(null);
+
     const draw = drawRef.current;
-    const feature = draw
-      ?.getAll()
-      .features.find((candidate) => candidate.geometry.type === "Polygon");
-
-    if (!draw || !feature || feature.geometry.type !== "Polygon") {
-      setCreateSiteError("Add at least three points before finishing.");
-      return;
+    if (draw) {
+      draw.deleteAll();
+      const [featureId] = draw.add({
+        type: "Feature",
+        properties: {},
+        geometry,
+      });
+      changeDrawMode("direct_select", { featureId });
     }
 
-    const ring = [...(feature.geometry.coordinates[0] as number[][])];
-    if (ring.length < 3) {
-      setCreateSiteError("Add at least three points before finishing.");
-      return;
+    const area = calculateAreaFromRing(ring);
+    if (area !== null) {
+      setDrawStats({ area, x: point.x, y: point.y });
+    }
+    siteNameInputRef.current?.focus();
+  }
+
+  function handlePointByPointClick(event: {
+    lngLat: { lng: number; lat: number };
+    point: { x: number; y: number };
+  }) {
+    if (siteEntryMode !== "draw" || drawTool !== "point") {
+      return false;
     }
 
-    const first = ring[0];
-    const last = ring[ring.length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) {
-      ring.push([...first]);
+    const map = mapRef.current?.getMap();
+    if (!map) {
+      return false;
     }
 
-    draw.delete(feature.id as string);
-    const [newFeatureId] = draw.add({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "Polygon", coordinates: [ring] },
-    });
-    const completedFeature = draw.get(newFeatureId);
-    if (completedFeature) {
-      handleDrawCreate({
-        features: [completedFeature],
-      } as MapboxDraw.DrawCreateEvent);
+    const closingThresholdPixels = 10;
+    if (draftPoints.length >= 3) {
+      for (const vertex of draftPoints) {
+        const pixel = map.project({ lng: vertex[0], lat: vertex[1] });
+        const distance = Math.hypot(
+          pixel.x - event.point.x,
+          pixel.y - event.point.y,
+        );
+        if (distance <= closingThresholdPixels) {
+          finishPointByPointDrawing(vertex, event.point);
+          return true;
+        }
+      }
     }
+
+    setCreateSiteError(null);
+    setSiteGeometryInput("");
+    setDraftPoints((current) => [
+      ...current,
+      [event.lngLat.lng, event.lngLat.lat],
+    ]);
+    return true;
   }
 
   function changeDrawMode(mode: string, options?: object) {
@@ -501,10 +626,58 @@ function Dashboard({
     draw?.changeMode(mode, options);
   }
 
-  function startDrawMode(mode: "draw_polygon" | "draw_freehand") {
-    changeDrawMode(mode);
-    setActiveDrawMode(mode);
+  function startDrawMode(mode: "point" | "draw_freehand") {
     setDrawStats(null);
+    setCreateSiteError(null);
+
+    if (
+      (mode === "point" && drawTool === "point") ||
+      (mode === "draw_freehand" && drawTool === "freehand")
+    ) {
+      drawRef.current?.deleteAll();
+      changeDrawMode("simple_select");
+      setDrawTool(null);
+      setDraftPoints([]);
+      setSiteGeometryInput("");
+      return;
+    }
+
+    if (mode === "point") {
+      drawRef.current?.deleteAll();
+      changeDrawMode("simple_select");
+      setDrawTool("point");
+      setDraftPoints([]);
+      return;
+    }
+
+    setDrawTool("freehand");
+    setDraftPoints([]);
+    setSiteGeometryInput("");
+    drawRef.current?.deleteAll();
+    changeDrawMode("draw_freehand");
+  }
+
+  function handleDashboardClick(event: MouseEvent<HTMLElement>) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (
+      target.closest(
+        ".map-wrap, .draw-toolbar, .entry-mode, button, input, textarea, select, form",
+      )
+    ) {
+      return;
+    }
+
+    if (drawTool !== null) {
+      drawRef.current?.deleteAll();
+      changeDrawMode("simple_select");
+      setDrawTool(null);
+      setDraftPoints([]);
+      setDrawStats(null);
+    }
   }
 
   function handleMapLoad() {
@@ -516,24 +689,20 @@ function Dashboard({
       const draw = new MapboxDraw({
         displayControlsDefault: false,
         modes: drawModes,
-        controls: { polygon: true, trash: true },
+        controls: { trash: true },
       });
       const map = mapRef.current.getMap();
       map.addControl(draw, "top-left");
       map.on("draw.create", handleDrawCreate);
-      map.on("draw.modechange", (event: { mode: string }) => {
-        const mode = event.mode as DrawMode;
-        setActiveDrawMode(mode);
-        if (mode !== "draw_polygon" && mode !== "draw_freehand") {
-          setDrawStats(null);
+      map.on("draw.update", (event: MapboxDraw.DrawUpdateEvent) => {
+        const feature = event.features[0];
+        if (feature && feature.geometry.type === "Polygon") {
+          setSiteGeometryInput(JSON.stringify(feature.geometry, null, 2));
         }
+        updateDrawStats();
       });
-      map.on("mousemove", (event) => {
-        const mode = drawRef.current?.getMode();
-        if (mode === "draw_polygon" || mode === "draw_freehand") {
-          updateDrawStats(event.point);
-        }
-      });
+      map.on("draw.render", () => updateDrawStats());
+
       drawRef.current = draw;
     } catch {
       setDrawUnavailable(true);
@@ -550,6 +719,20 @@ function Dashboard({
     [projects, selectedProjectId],
   );
 
+  function getSitePoint(site: Site): [number, number] {
+    const ring = site.geometry.coordinates[0];
+    if (ring.length === 0) {
+      return [0, 0];
+    }
+
+    const uniqueRing = ring.length > 1 ? ring.slice(0, -1) : ring;
+    const longitude =
+      uniqueRing.reduce((sum, [value]) => sum + value, 0) / uniqueRing.length;
+    const latitude =
+      uniqueRing.reduce((sum, [, value]) => sum + value, 0) / uniqueRing.length;
+    return [longitude, latitude];
+  }
+
   const siteGeoJson = useMemo<SiteFeatureCollection>(
     () => ({
       type: "FeatureCollection",
@@ -565,9 +748,61 @@ function Dashboard({
     [sites],
   );
 
+  const sitePointGeoJson = useMemo<SitePointFeatureCollection>(
+    () => ({
+      type: "FeatureCollection",
+      features: sites.map((site) => ({
+        type: "Feature",
+        properties: {
+          siteId: site.id,
+          siteName: site.name,
+          areaHectares: site.area_hectares,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: getSitePoint(site),
+        },
+      })),
+    }),
+    [sites],
+  );
+
+  const draftPointGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: draftPoints.map((point, index) => ({
+        type: "Feature" as const,
+        properties: { index },
+        geometry: { type: "Point" as const, coordinates: point },
+      })),
+    }),
+    [draftPoints],
+  );
+
+  const draftLineGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features:
+        draftPoints.length > 1
+          ? [
+              {
+                type: "Feature" as const,
+                properties: {},
+                geometry: {
+                  type: "LineString" as const,
+                  coordinates: draftPoints,
+                },
+              },
+            ]
+          : [],
+    }),
+    [draftPoints],
+  );
+
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
 
   function focusSite(site: Site) {
+    setSelectedSiteId(site.id);
     const ring = site.geometry.coordinates[0];
     const longitudes = ring.map(([longitude]) => longitude);
     const latitudes = ring.map(([, latitude]) => latitude);
@@ -620,19 +855,161 @@ function Dashboard({
     }
   }, [sites]);
 
+  function handleMapClick(event: {
+    lngLat: { lng: number; lat: number };
+    point: { x: number; y: number };
+    features?: Array<{
+      layer?: { id?: string };
+      properties?: Record<string, unknown> | null;
+    }>;
+  }) {
+    if (handlePointByPointClick(event)) {
+      return;
+    }
+
+    const clickedPoint = event.features?.find(
+      (feature) =>
+        feature.layer?.id === "site-points" ||
+        feature.layer?.id === "site-fill" ||
+        feature.layer?.id === "site-outline",
+    );
+    const siteId = Number(clickedPoint?.properties?.["siteId"]);
+    if (!Number.isFinite(siteId)) {
+      setSelectedSiteId(null);
+      return;
+    }
+
+    const site = sites.find((candidate) => candidate.id === siteId);
+    if (site) {
+      if (selectedSiteId === site.id) {
+        setSelectedSiteId(null);
+      } else {
+        focusSite(site);
+      }
+    }
+  }
+
+  function handleMapMouseMove(event: {
+    lngLat: { lng: number; lat: number };
+    point: { x: number; y: number };
+    features?: Array<{
+      layer?: { id?: string };
+      properties?: Record<string, unknown> | null;
+    }>;
+  }) {
+    if (
+      siteEntryMode === "draw" &&
+      drawTool === "point" &&
+      draftPoints.length >= 2
+    ) {
+      const provisionalRing = [
+        ...draftPoints,
+        [event.lngLat.lng, event.lngLat.lat],
+        draftPoints[0],
+      ] as number[][];
+      const area = calculateAreaFromRing(provisionalRing);
+      if (area !== null) {
+        setDrawStats({ area, x: event.point.x, y: event.point.y });
+      }
+    } else {
+      const mode = drawRef.current?.getMode();
+      if (mode === "draw_polygon" || mode === "draw_freehand") {
+        updateDrawStats(event.point);
+      }
+    }
+
+    const hovered = event.features?.find(
+      (feature) =>
+        feature.layer?.id === "site-points" ||
+        feature.layer?.id === "site-fill" ||
+        feature.layer?.id === "site-outline",
+    );
+
+    const hoveredSiteId = Number(hovered?.properties?.["siteId"]);
+    if (Number.isFinite(hoveredSiteId)) {
+      const site = sites.find((candidate) => candidate.id === hoveredSiteId);
+      if (site) {
+        setHoverSiteInfo({
+          siteName: site.name,
+          areaHectares: site.area_hectares,
+          x: event.point.x,
+          y: event.point.y,
+        });
+      }
+    } else {
+      setHoverSiteInfo(null);
+    }
+
+    const onSitePointer =
+      event.features?.some(
+        (feature) =>
+          feature.layer?.id === "site-points" ||
+          feature.layer?.id === "site-fill" ||
+          feature.layer?.id === "site-outline",
+      ) ?? false;
+    const canvas = mapRef.current?.getMap().getCanvas();
+    if (canvas) {
+      if (siteEntryMode === "draw" && drawTool === "point") {
+        canvas.style.cursor = "crosshair";
+      } else {
+        canvas.style.cursor = onSitePointer ? "pointer" : "";
+      }
+    }
+  }
+
+  function handleMapLeave() {
+    setHoverSiteInfo(null);
+    if (siteEntryMode !== "draw" || drawTool !== "point") {
+      setDrawStats(null);
+    }
+    const canvas = mapRef.current?.getMap().getCanvas();
+    if (canvas) {
+      canvas.style.cursor = "";
+    }
+  }
+
   return (
-    <main className="dashboard-layout">
+    <main
+      className={`dashboard-layout ${darkMode ? "theme-dark" : ""}`}
+      onClick={handleDashboardClick}
+    >
+      <aside className="theme-switcher" aria-label="Colour theme">
+        <button
+          type="button"
+          className={
+            !darkMode ? "theme-button theme-button-active" : "theme-button"
+          }
+          onClick={() => setDarkMode(false)}
+          aria-label="Use light theme"
+          title="Light theme"
+        >
+          <ThemeIcon kind="sun" />
+        </button>
+        <button
+          type="button"
+          className={
+            darkMode ? "theme-button theme-button-active" : "theme-button"
+          }
+          onClick={() => setDarkMode(true)}
+          aria-label="Use dark theme"
+          title="Dark theme"
+        >
+          <ThemeIcon kind="moon" />
+        </button>
+      </aside>
       <header>
         <div>
           <h1>Darukaa.Earth</h1>
           <p>{projectCountLabel}</p>
         </div>
-        <button className="link" onClick={onLogout}>
-          Logout
-        </button>
+        <div className="header-actions">
+          <button className="link" onClick={onLogout}>
+            Logout
+          </button>
+        </div>
       </header>
 
-      <section className="card">
+      <section className="card project-create-card">
         <h2>Create project</h2>
         <form onSubmit={createProject} className="project-form">
           <label>
@@ -660,7 +1037,7 @@ function Dashboard({
         {projectError ? <p className="error">{projectError}</p> : null}
       </section>
 
-      <section className="card">
+      <section className="card projects-card">
         <h2>Projects</h2>
         {loadingProjects ? <p>Loading projects...</p> : null}
         {!loadingProjects && projects.length === 0 ? (
@@ -679,7 +1056,11 @@ function Dashboard({
                   <button
                     className="project-item"
                     type="button"
-                    onClick={() => setSelectedProjectId(project.id)}
+                    onClick={() =>
+                      setSelectedProjectId((current) =>
+                        current === project.id ? null : project.id,
+                      )
+                    }
                   >
                     <strong>{project.name}</strong>
                     <span>{project.description || "No description"}</span>
@@ -691,7 +1072,7 @@ function Dashboard({
         ) : null}
       </section>
 
-      <section className="card">
+      <section className="card sites-card">
         <h2>Sites {selectedProject ? `for ${selectedProject.name}` : ""}</h2>
         {selectedProject ? (
           <p>{siteCountLabel}</p>
@@ -712,11 +1093,18 @@ function Dashboard({
         {!loadingSites && !sitesError && sites.length > 0 ? (
           <ul className="site-list">
             {sites.map((site) => (
-              <li key={site.id}>
+              <li
+                key={site.id}
+                className={site.id === selectedSiteId ? "selected-item" : ""}
+              >
                 <button
                   className="site-item"
                   type="button"
-                  onClick={() => focusSite(site)}
+                  onClick={() =>
+                    selectedSiteId === site.id
+                      ? setSelectedSiteId(null)
+                      : focusSite(site)
+                  }
                 >
                   <strong>{site.name}</strong>
                   <span>
@@ -729,7 +1117,7 @@ function Dashboard({
         ) : null}
       </section>
 
-      <section className="card">
+      <section className="card map-card">
         <h2>Site map</h2>
         {!MAPBOX_TOKEN ? (
           <p className="error">
@@ -746,47 +1134,90 @@ function Dashboard({
                 latitude: 20.5937,
                 zoom: 3.2,
               }}
-              mapStyle="mapbox://styles/mapbox/light-v11"
+              mapStyle={
+                darkMode
+                  ? "mapbox://styles/mapbox/dark-v11"
+                  : "mapbox://styles/mapbox/light-v11"
+              }
               onLoad={handleMapLoad}
+              interactiveLayerIds={["site-points", "site-fill", "site-outline"]}
+              onClick={handleMapClick}
+              onMouseMove={handleMapMouseMove}
+              onMouseLeave={handleMapLeave}
             >
               <Source id="sites" type="geojson" data={siteGeoJson}>
                 <Layer {...siteFillLayer} />
                 <Layer {...siteOutlineLayer} />
               </Source>
+              <Source
+                id="site-points-source"
+                type="geojson"
+                data={sitePointGeoJson}
+              >
+                <Layer {...sitePointLayer} />
+              </Source>
+              {siteEntryMode === "draw" && drawTool === "point" ? (
+                <>
+                  <Source
+                    id="draft-line-source"
+                    type="geojson"
+                    data={draftLineGeoJson}
+                  >
+                    <Layer {...draftLineLayer} />
+                  </Source>
+                  <Source
+                    id="draft-points-source"
+                    type="geojson"
+                    data={draftPointGeoJson}
+                  >
+                    <Layer {...draftPointLayer} />
+                  </Source>
+                </>
+              ) : null}
             </Map>
-            {activeDrawMode === "draw_polygon" ||
-            activeDrawMode === "draw_freehand" ? (
-              <div className="draw-toolbar">
-                <button
-                  type="button"
-                  onClick={() => startDrawMode("draw_polygon")}
-                >
-                  Polygon
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startDrawMode("draw_freehand")}
-                >
-                  Freehand
-                </button>
-                <button type="button" onClick={finishDrawing}>
-                  Finish polygon
-                </button>
-              </div>
-            ) : null}
+            <div className="draw-toolbar">
+              <button
+                type="button"
+                className={drawTool === "point" ? "mode-active" : "mode-button"}
+                onClick={() => startDrawMode("point")}
+              >
+                Point by point
+              </button>
+              <button
+                type="button"
+                className={
+                  drawTool === "freehand" ? "mode-active" : "mode-button"
+                }
+                onClick={() => startDrawMode("draw_freehand")}
+              >
+                Freehand
+              </button>
+            </div>
             {drawStats ? (
               <div
                 className="draw-stats"
                 style={{ left: drawStats.x + 12, top: drawStats.y + 12 }}
               >
-                {drawStats.area.toFixed(2)} hectares
+                Live area: {drawStats.area.toFixed(2)} ha
+              </div>
+            ) : null}
+            {hoverSiteInfo ? (
+              <div
+                className="hover-site-info"
+                style={{
+                  left: hoverSiteInfo.x + 12,
+                  top: hoverSiteInfo.y + 12,
+                }}
+              >
+                {hoverSiteInfo.siteName} ·{" "}
+                {hoverSiteInfo.areaHectares.toFixed(2)} ha
               </div>
             ) : null}
           </div>
         )}
       </section>
 
-      <section className="card">
+      <section className="card create-site-card">
         <h2>Create site</h2>
         {!MAPBOX_TOKEN || drawUnavailable ? (
           <p>
@@ -795,7 +1226,10 @@ function Dashboard({
               : "Set VITE_MAPBOX_TOKEN to draw on the map, or enter a Polygon GeoJSON manually."}
           </p>
         ) : (
-          <p>Use the polygon tool on the map, then enter a name below.</p>
+          <p>
+            Pick a draw mode, click points to form boundary, and click first
+            point to close polygon. Live area updates while drawing.
+          </p>
         )}
         <div
           className="entry-mode"
