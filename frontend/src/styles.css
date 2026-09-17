@@ -195,9 +195,54 @@ small {
 }
 
 .map-wrap {
+  position: relative;
   margin-top: 0.75rem;
   height: 360px;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #d7e4da;
+}
+
+.mapbox-gl-draw_polygon,
+.mapbox-gl-draw_freehand {
+  cursor: crosshair !important;
+}
+
+.mapbox-gl-draw_direct_select {
+  cursor: grab !important;
+}
+
+.draw-toolbar {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.draw-toolbar button {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #126149;
+  background: #fff;
+  color: #126149;
+  box-shadow: 0 2px 8px #18312b22;
+}
+
+.draw-toolbar button:hover {
+  background: #edf7f0;
+}
+
+.draw-stats {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #cce3d4;
+  border-radius: 999px;
+  background: #fff;
+  color: #126149;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px #18312b22;
+  white-space: nowrap;
 }

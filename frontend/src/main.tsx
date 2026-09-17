@@ -10,6 +10,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import Map, { Layer, MapRef, Source } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
+import FreehandMode from "mapbox-gl-draw-freehand-mode";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
@@ -36,6 +37,9 @@ type Site = {
   area_hectares: number;
   created_at: string;
 };
+
+type DrawMode =
+  "draw_polygon" | "draw_freehand" | "direct_select" | "simple_select";
 
 type SiteFeatureCollection = {
   type: "FeatureCollection";
@@ -79,6 +83,11 @@ const siteFillLayer = {
     "fill-opacity": 0.3,
   },
 } as const;
+
+const drawModes = {
+  ...MapboxDraw.modes,
+  draw_freehand: FreehandMode as unknown as MapboxDraw.DrawCustomMode,
+} as unknown as { [modeKey: string]: MapboxDraw.DrawCustomMode };
 
 const siteOutlineLayer = {
   id: "site-outline",
@@ -227,6 +236,12 @@ function Dashboard({
     "draw",
   );
   const [drawUnavailable, setDrawUnavailable] = useState(false);
+  const [activeDrawMode, setActiveDrawMode] = useState<DrawMode | null>(null);
+  const [drawStats, setDrawStats] = useState<{
+    area: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const [creatingSite, setCreatingSite] = useState(false);
   const [createSiteError, setCreateSiteError] = useState<string | null>(null);
 
@@ -375,12 +390,55 @@ function Dashboard({
       );
       setSiteName("");
       setSiteGeometryInput("");
+      setDrawStats(null);
+      drawRef.current?.deleteAll();
+      changeDrawMode("simple_select");
+      setActiveDrawMode("simple_select");
       await loadSites();
     } catch (requestError) {
       setCreateSiteError((requestError as Error).message);
     } finally {
       setCreatingSite(false);
     }
+  }
+
+  function calculateDrawArea(feature: GeoJSON.Feature): number | null {
+    if (feature.geometry.type !== "Polygon") {
+      return null;
+    }
+
+    const ring = feature.geometry.coordinates[0] as number[][];
+    if (ring.length < 3) {
+      return null;
+    }
+
+    let area = 0;
+    for (let index = 0; index < ring.length - 1; index += 1) {
+      const [longitudeA, latitudeA] = ring[index];
+      const [longitudeB, latitudeB] = ring[index + 1];
+      area += longitudeA * latitudeB - longitudeB * latitudeA;
+    }
+
+    return Math.abs(area) * 0.5 * 12364;
+  }
+
+  function updateDrawStats(point?: { x: number; y: number }) {
+    if (!drawRef.current || !mapRef.current || !activeDrawMode) {
+      return;
+    }
+
+    const feature = drawRef.current.getAll().features[0];
+    const area = feature ? calculateDrawArea(feature) : null;
+    if (area === null) {
+      setDrawStats(null);
+      return;
+    }
+
+    setDrawStats({
+      area,
+      x: point?.x ?? 20,
+      y: point?.y ?? 20,
+    });
   }
 
   function handleDrawCreate(event: MapboxDraw.DrawCreateEvent) {
@@ -393,7 +451,23 @@ function Dashboard({
     setCreateSiteError(null);
     setSiteEntryMode("draw");
     setSiteGeometryInput(JSON.stringify(feature.geometry, null, 2));
+    changeDrawMode("direct_select", { featureId: feature.id });
+    setActiveDrawMode("direct_select");
+    setDrawStats(null);
     siteNameInputRef.current?.focus();
+  }
+
+  function changeDrawMode(mode: string, options?: object) {
+    const draw = drawRef.current as unknown as {
+      changeMode: (nextMode: string, nextOptions?: object) => void;
+    } | null;
+    draw?.changeMode(mode, options);
+  }
+
+  function startDrawMode(mode: "draw_polygon" | "draw_freehand") {
+    changeDrawMode(mode);
+    setActiveDrawMode(mode);
+    setDrawStats(null);
   }
 
   function handleMapLoad() {
@@ -404,11 +478,25 @@ function Dashboard({
     try {
       const draw = new MapboxDraw({
         displayControlsDefault: false,
+        modes: drawModes,
         controls: { polygon: true, trash: true },
       });
       const map = mapRef.current.getMap();
       map.addControl(draw, "top-left");
       map.on("draw.create", handleDrawCreate);
+      map.on("draw.modechange", (event: { mode: string }) => {
+        const mode = event.mode as DrawMode;
+        setActiveDrawMode(mode);
+        if (mode !== "draw_polygon" && mode !== "draw_freehand") {
+          setDrawStats(null);
+        }
+      });
+      map.on("mousemove", (event) => {
+        const mode = drawRef.current?.getMode();
+        if (mode === "draw_polygon" || mode === "draw_freehand") {
+          updateDrawStats(event.point);
+        }
+      });
       drawRef.current = draw;
     } catch {
       setDrawUnavailable(true);
@@ -543,22 +631,6 @@ function Dashboard({
         ) : null}
         {!loadingProjects && projects.length > 0 ? (
           <>
-            <label>
-              Selected project
-              <select
-                value={selectedProjectId ?? ""}
-                onChange={(event) =>
-                  setSelectedProjectId(Number(event.target.value))
-                }
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
             <ul className="project-list">
               {projects.map((project) => (
                 <li
@@ -645,6 +717,31 @@ function Dashboard({
                 <Layer {...siteOutlineLayer} />
               </Source>
             </Map>
+            {activeDrawMode === "draw_polygon" ||
+            activeDrawMode === "draw_freehand" ? (
+              <div className="draw-toolbar">
+                <button
+                  type="button"
+                  onClick={() => startDrawMode("draw_polygon")}
+                >
+                  Polygon
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startDrawMode("draw_freehand")}
+                >
+                  Freehand
+                </button>
+              </div>
+            ) : null}
+            {drawStats ? (
+              <div
+                className="draw-stats"
+                style={{ left: drawStats.x + 12, top: drawStats.y + 12 }}
+              >
+                {drawStats.area.toFixed(2)} hectares
+              </div>
+            ) : null}
           </div>
         )}
       </section>
