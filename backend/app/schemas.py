@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class AuthRequest(BaseModel):
@@ -10,7 +10,7 @@ class AuthRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = 'bearer'
+    token_type: str = "bearer"
 
 
 class UserResponse(BaseModel):
@@ -18,5 +18,18 @@ class UserResponse(BaseModel):
     email: EmailStr
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    description: str = ""
+
+
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    description: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

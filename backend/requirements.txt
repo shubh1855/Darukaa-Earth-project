@@ -1,10 +1,12 @@
+# Keep for compatibility with systems that still use pip install -r
+# Primary dependency manager for this project is uv and backend/pyproject.toml
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.36
 alembic==1.14.0
 psycopg[binary]==3.2.3
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+pwdlib[argon2]==0.2.1
 pydantic-settings==2.7.1
 python-multipart==0.0.20
 email-validator==2.2.0
