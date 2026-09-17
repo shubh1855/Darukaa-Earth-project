@@ -3,102 +3,140 @@
 **Last updated:** 2026-09-17  
 **Target:** MVP ready for review by tomorrow evening
 
-## Status summary
+Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or intentionally out of MVP scope.
 
-| Phase | Scope                                | Status   |
-| ----- | ------------------------------------ | -------- |
-| 0     | Repository, tooling, CI, local setup | Complete |
-| 1     | Authentication API and UI            | Complete |
-| 2     | Project creation, listing, ownership | Complete |
-| 3     | PostGIS sites and Mapbox polygons    | Next     |
-| 4     | Site analytics and metrics chart     | Planned  |
-| 5     | Deployment, submission, final QA     | Planned  |
+## Phase 0 — Foundation
 
-## Completed
+- [x] Create monorepo layout.
+- [x] Write product specification and acceptance criteria.
+- [x] Write implementation guide and delivery plan.
+- [x] Add root `.gitignore` and environment template.
+- [x] Add root npm scripts and lockfile.
+- [x] Add Husky pre-commit hook.
+- [x] Add lint-staged rules for frontend, backend, and docs.
+- [x] Add frontend ESLint and Prettier configuration.
+- [x] Add backend Ruff configuration.
+- [x] Add backend `pyproject.toml` with uv dependency groups.
+- [x] Add backend `uv.lock`.
+- [x] Add local PostGIS Docker Compose service.
+- [x] Add GitHub Actions frontend, backend, and integration jobs.
+- [x] Add bootstrap README.
 
-### Repository foundation
+## Phase 1 — Authentication
 
-- Monorepo structure created.
-- Product specification created in `docs/PROJECT-SPEC.md`.
-- Implementation guide created in `docs/IMPLEMENTATION.md`.
-- README contains setup and quality commands.
-- GitHub Actions workflow exists for frontend, backend, and PostGIS integration checks.
-- Husky and lint-staged pre-commit hook enabled.
-- `uv` manages backend dependencies through `backend/pyproject.toml` and `backend/uv.lock`.
-- Ruff provides Python lint and formatting.
+- [x] Add `User` SQLAlchemy model.
+- [x] Add registration endpoint.
+- [x] Add login endpoint.
+- [x] Add current-user endpoint.
+- [x] Add JWT creation and validation.
+- [x] Add Argon2 password hashing with `pwdlib`.
+- [x] Add duplicate email handling.
+- [x] Add invalid credential handling.
+- [x] Add protected-route dependency.
+- [x] Add registration and login UI.
+- [x] Add token persistence and logout UI.
+- [x] Add authentication tests.
 
-### Authentication
+## Phase 2 — Projects
 
-- Registration endpoint: `POST /api/auth/register`.
-- Login endpoint: `POST /api/auth/login`.
-- Current-user endpoint: `GET /api/auth/me`.
-- JWT bearer authentication.
-- Argon2 password hashing through `pwdlib`.
-- Duplicate email and invalid credential handling.
-- Frontend login and registration screen.
-- Logout and browser token persistence.
+- [x] Add `Project` model.
+- [x] Add project owner relationship.
+- [x] Add project create endpoint.
+- [x] Add project list endpoint.
+- [x] Trim and validate project fields.
+- [x] Scope project queries to authenticated owner.
+- [x] Add project creation form.
+- [x] Add project list UI.
+- [x] Add loading state.
+- [x] Add empty state.
+- [x] Add API error state.
+- [x] Add project ownership tests.
+- [x] Run full local quality checks.
 
-### Projects
-
-- `Project` model with owner relationship.
-- `GET /api/projects` lists only authenticated user's projects.
-- `POST /api/projects` creates owned project.
-- Project name and description validation.
-- Frontend create form and project list.
-- Empty, loading, and error states.
-- Tests cover project creation, authentication, and cross-user isolation.
-
-## Validation completed
-
-```text
-Frontend ESLint: passed
-Prettier format check: passed
-Ruff backend lint: passed
-Backend pytest: 6 passed
-```
-
-Warnings remain from upstream dependencies using deprecated `datetime.utcnow`; they do not fail the current checks.
-
-## Next work: Phase 3
+## Phase 3 — Sites and mapping
 
 ### Backend
 
-1. Add `Site` model and PostGIS geometry column.
-2. Add Alembic configuration and initial migrations.
-3. Add GeoJSON request and response schemas.
-4. Validate Polygon type and closed linear rings.
-5. Add project ownership checks for site routes.
-6. Calculate area with projected PostGIS geometry.
-7. Add `GET /api/projects/{id}/sites`.
-8. Add `POST /api/projects/{id}/sites`.
-9. Add `GET /api/sites/{id}` placeholder or detail response.
-10. Add unit tests with geometry fixtures and integration tests against PostGIS.
+- [ ] Add Alembic environment and initial migration.
+- [ ] Enable PostGIS extension in migration.
+- [ ] Add `Site` model.
+- [ ] Add PostGIS `geometry(Polygon, 4326)` column.
+- [ ] Add site request and response schemas.
+- [ ] Validate Polygon geometry type.
+- [ ] Validate closed linear rings and coordinate bounds.
+- [ ] Add project ownership checks for site routes.
+- [ ] Calculate area with projected PostGIS geometry.
+- [ ] Add `GET /api/projects/{id}/sites`.
+- [ ] Add `POST /api/projects/{id}/sites`.
+- [ ] Add `GET /api/sites/{id}`.
+- [ ] Add geometry unit tests.
+- [ ] Add PostGIS integration tests.
 
 ### Frontend
 
-1. Add Mapbox token handling and map component.
-2. Add Mapbox Draw control.
-3. Add site-name form after polygon draw.
-4. Save polygon through API.
-5. Render saved polygons as GeoJSON layers.
-6. Add site list and selection state.
-7. Display area in hectares.
+- [ ] Add Mapbox token configuration.
+- [ ] Add interactive Mapbox map.
+- [ ] Add navigation controls.
+- [ ] Add Mapbox Draw polygon control.
+- [ ] Add site-name form after polygon draw.
+- [ ] Disable save for invalid geometry.
+- [ ] Save polygon through API.
+- [ ] Refetch sites after save.
+- [ ] Render saved GeoJSON polygons.
+- [ ] Add site list and selection state.
+- [ ] Display calculated hectares.
+- [ ] Add mobile layout for map and site list.
 
-### Done criteria
+**Current phase:** `[~]` Phase 3 is next implementation slice. Backend model and API work starts first.
 
-- User can select a project.
-- User can draw valid polygon.
-- Invalid polygon cannot be submitted.
-- Saved site survives refresh.
-- Site is visible on map after refresh.
-- User cannot read another user's project sites.
-- Backend and frontend checks pass.
+## Phase 4 — Analytics
 
-## Deferred work
+- [ ] Add `SiteMetric` model and migration.
+- [ ] Add unique `(site_id, period)` constraint.
+- [ ] Add metric seed command.
+- [ ] Add ordered metric response.
+- [ ] Add latest carbon KPI.
+- [ ] Add latest biodiversity KPI.
+- [ ] Add Chart.js time-series chart.
+- [ ] Add no-data state.
+- [ ] Add analytics API tests.
+- [ ] Add analytics UI smoke test.
 
-- Polygon editing and deletion.
-- Team sharing and roles.
-- Data import/export.
-- Live sensor integrations.
-- Scientific carbon accounting.
-- Advanced filtering and reports.
+## Phase 5 — Delivery
+
+- [ ] Add production migration command.
+- [ ] Verify PostGIS deployment database.
+- [ ] Deploy API.
+- [ ] Deploy frontend.
+- [ ] Configure production CORS.
+- [ ] Configure restricted Mapbox token.
+- [ ] Add deployment health check.
+- [ ] Run reviewer smoke test.
+- [ ] Capture screenshots or demo recording.
+- [ ] Complete README deployment notes.
+- [ ] Prepare Word submission document.
+- [ ] Add live demo URL.
+- [ ] Grant private repository access if needed.
+
+## Deferred from MVP
+
+- [-] Polygon editing.
+- [-] Polygon deletion.
+- [-] Team sharing and roles.
+- [-] GIS import/export.
+- [-] Live sensor integrations.
+- [-] Scientific carbon accounting.
+- [-] Advanced filtering and reports.
+- [-] Native mobile app.
+- [-] Real-time collaboration.
+
+## Validation record
+
+- [x] Frontend ESLint passes locally.
+- [x] Prettier format check passes locally.
+- [x] Ruff backend lint passes locally.
+- [x] Backend pytest passes locally: 6 tests.
+- [ ] GitHub Actions run passes after workflow cleanup.
+- [ ] PostGIS integration test passes in CI.
+
+Known non-blocking warnings: SQLAlchemy and `python-jose` currently emit upstream `datetime.utcnow` deprecation warnings under Python 3.13.

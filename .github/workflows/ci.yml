@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   frontend:
-    if: hashFiles('frontend/package-lock.json') != ''
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,7 +25,6 @@ jobs:
       - run: npm run build
 
   backend:
-    if: hashFiles('backend/requirements.txt') != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +42,6 @@ jobs:
         run: PYTHONPATH=backend uv run --project backend pytest backend/tests
 
   integration:
-    if: hashFiles('backend/requirements.txt') != ''
     runs-on: ubuntu-latest
     services:
       postgres:
