@@ -69,14 +69,14 @@ docs/                   Specification, implementation guide, and progress
 
 ## Implemented API
 
-| Method | Route | Purpose |
-|---|---|---|
-| `GET` | `/api/health` | Service health check |
-| `POST` | `/api/auth/register` | Register user and return JWT |
-| `POST` | `/api/auth/login` | Authenticate user and return JWT |
-| `GET` | `/api/auth/me` | Return authenticated user |
-| `GET` | `/api/projects` | List authenticated user's projects |
-| `POST` | `/api/projects` | Create owned project |
+| Method | Route                | Purpose                            |
+| ------ | -------------------- | ---------------------------------- |
+| `GET`  | `/api/health`        | Service health check               |
+| `POST` | `/api/auth/register` | Register user and return JWT       |
+| `POST` | `/api/auth/login`    | Authenticate user and return JWT   |
+| `GET`  | `/api/auth/me`       | Return authenticated user          |
+| `GET`  | `/api/projects`      | List authenticated user's projects |
+| `POST` | `/api/projects`      | Create owned project               |
 
 Planned site and analytics routes are tracked in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
