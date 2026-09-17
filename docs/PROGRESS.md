@@ -139,4 +139,4 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 - [ ] GitHub Actions run passes after workflow cleanup.
 - [ ] PostGIS integration test passes in CI.
 
-Known non-blocking warnings: SQLAlchemy and `python-jose` currently emit upstream `datetime.utcnow` deprecation warnings under Python 3.13.
+Warnings cleaned: application now uses timezone-aware timestamps, PyJWT, and a compatible AnyIO version. Current local quality run is clean.

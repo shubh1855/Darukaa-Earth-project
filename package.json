@@ -2,7 +2,7 @@
   "name": "darukaa-earth",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "npm@10",
+  "packageManager": "npm@10.9.2",
   "scripts": {
     "prepare": "husky",
     "lint": "npm --prefix frontend run lint",

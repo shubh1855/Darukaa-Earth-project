@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jwt.exceptions import PyJWTError
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
 
@@ -36,7 +37,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = int(payload["sub"])
-    except (JWTError, KeyError, ValueError):
+    except (PyJWTError, KeyError, ValueError):
         raise unauthorized
 
     user = db.get(User, user_id)
