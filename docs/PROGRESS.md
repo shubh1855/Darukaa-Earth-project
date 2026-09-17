@@ -57,20 +57,20 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 
 ### Backend
 
-- [ ] Add Alembic environment and initial migration.
-- [ ] Enable PostGIS extension in migration.
-- [ ] Add `Site` model.
-- [ ] Add PostGIS `geometry(Polygon, 4326)` column.
-- [ ] Add site request and response schemas.
-- [ ] Validate Polygon geometry type.
-- [ ] Validate closed linear rings and coordinate bounds.
-- [ ] Add project ownership checks for site routes.
-- [ ] Calculate area with projected PostGIS geometry.
-- [ ] Add `GET /api/projects/{id}/sites`.
-- [ ] Add `POST /api/projects/{id}/sites`.
-- [ ] Add `GET /api/sites/{id}`.
-- [ ] Add geometry unit tests.
-- [ ] Add PostGIS integration tests.
+- [x] Add Alembic environment and idempotent initial migration.
+- [x] Enable PostGIS extension in migration.
+- [x] Add `Site` model.
+- [x] Add PostGIS `geometry(Polygon, 4326)` column with SQLite compatibility.
+- [x] Add site request and response schemas.
+- [x] Validate Polygon geometry type.
+- [x] Validate closed linear rings and coordinate bounds.
+- [x] Add project ownership checks for site routes.
+- [x] Calculate area with projected PostGIS geometry.
+- [x] Add `GET /api/projects/{id}/sites`.
+- [x] Add `POST /api/projects/{id}/sites`.
+- [x] Add `GET /api/sites/{id}`.
+- [x] Add geometry unit tests.
+- [x] Add PostGIS integration test with safe skip when unavailable.
 
 ### Frontend
 
@@ -87,7 +87,7 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 - [ ] Display calculated hectares.
 - [ ] Add mobile layout for map and site list.
 
-**Current phase:** `[~]` Phase 3 is next implementation slice. Backend model and API work starts first.
+**Current phase:** `[~]` Phase 3 frontend mapping remains; backend persistence and API work is complete.
 
 ## Phase 4 — Analytics
 
@@ -135,8 +135,8 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 - [x] Frontend ESLint passes locally.
 - [x] Prettier format check passes locally.
 - [x] Ruff backend lint passes locally.
-- [x] Backend pytest passes locally: 6 tests.
+- [x] Backend pytest passes locally: 9 passed, 1 PostGIS integration test skipped when unavailable.
 - [ ] GitHub Actions run passes after workflow cleanup.
-- [ ] PostGIS integration test passes in CI.
+- [ ] PostGIS integration test passes in CI (requires the PostGIS service).
 
 Warnings cleaned: application now uses timezone-aware timestamps, PyJWT, and a compatible AnyIO version. Current local quality run is clean.

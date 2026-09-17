@@ -167,6 +167,7 @@ npm run lint
 npm run format:check
 npm run lint:backend
 npm run test:backend
+npm run test:integration
 ```
 
 Pre-commit behavior:
@@ -175,6 +176,12 @@ Pre-commit behavior:
 - Prettier runs for changed documentation.
 - Ruff lint and format run for changed backend files.
 - Full tests remain in CI, not in the fast commit hook.
+
+Pre-push behavior:
+
+- Integration-marked backend tests run before every push.
+- The full backend test suite runs after integration tests pass.
+- A failing test blocks the push.
 
 ## CI/CD
 

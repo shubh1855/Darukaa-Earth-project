@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from geoalchemy2 import Geometry
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from .database import Base
 
@@ -30,3 +32,40 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     owner: Mapped[User] = relationship(back_populates="projects")
+    sites: Mapped[list["Site"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+
+
+class SpatialGeometry(TypeDecorator):
+    impl = Text
+    cache_ok = True
+
+    # GeoAlchemy inspects the declared type during PostgreSQL DDL events,
+    # before SQLAlchemy replaces the implementation with Geometry.
+    geometry_type = "POLYGON"
+    srid = 4326
+    dimension = 2
+    spatial_index = False
+    use_N_D_index = False
+    use_typmod = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(Geometry(geometry_type="POLYGON", srid=4326))
+        return dialect.type_descriptor(Text())
+
+
+class Site(Base):
+    __tablename__ = "sites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    geometry_json: Mapped[str] = mapped_column(Text)
+    geometry: Mapped[object | None] = mapped_column(SpatialGeometry(), nullable=True)
+    area_hectares: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    project: Mapped[Project] = relationship(back_populates="sites")
