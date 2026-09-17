@@ -423,7 +423,7 @@ function Dashboard({
   }
 
   function updateDrawStats(point?: { x: number; y: number }) {
-    if (!drawRef.current || !mapRef.current || !activeDrawMode) {
+    if (!drawRef.current || !mapRef.current) {
       return;
     }
 
@@ -455,6 +455,43 @@ function Dashboard({
     setActiveDrawMode("direct_select");
     setDrawStats(null);
     siteNameInputRef.current?.focus();
+  }
+
+  function finishDrawing() {
+    const draw = drawRef.current;
+    const feature = draw
+      ?.getAll()
+      .features.find((candidate) => candidate.geometry.type === "Polygon");
+
+    if (!draw || !feature || feature.geometry.type !== "Polygon") {
+      setCreateSiteError("Add at least three points before finishing.");
+      return;
+    }
+
+    const ring = [...(feature.geometry.coordinates[0] as number[][])];
+    if (ring.length < 3) {
+      setCreateSiteError("Add at least three points before finishing.");
+      return;
+    }
+
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      ring.push([...first]);
+    }
+
+    draw.delete(feature.id as string);
+    const [newFeatureId] = draw.add({
+      type: "Feature",
+      properties: {},
+      geometry: { type: "Polygon", coordinates: [ring] },
+    });
+    const completedFeature = draw.get(newFeatureId);
+    if (completedFeature) {
+      handleDrawCreate({
+        features: [completedFeature],
+      } as MapboxDraw.DrawCreateEvent);
+    }
   }
 
   function changeDrawMode(mode: string, options?: object) {
@@ -731,6 +768,9 @@ function Dashboard({
                   onClick={() => startDrawMode("draw_freehand")}
                 >
                   Freehand
+                </button>
+                <button type="button" onClick={finishDrawing}>
+                  Finish polygon
                 </button>
               </div>
             ) : null}
