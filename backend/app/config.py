@@ -2,13 +2,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    database_url: str = 'sqlite:///./darukaa.db'
-    jwt_secret: str = 'change-me'
-    jwt_algorithm: str = 'HS256'
+    database_url: str = "sqlite:///./darukaa.db"
+    jwt_secret: str = "change-me"
+    jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
-    cors_origins: str = 'http://localhost:5173'
+    cors_origins: str = "http://localhost:5173"
 
 
 settings = Settings()
