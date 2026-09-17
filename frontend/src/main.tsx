@@ -1,7 +1,14 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import Map, { Layer, Source } from "react-map-gl";
+import Map, { Layer, MapRef, Source } from "react-map-gl";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./styles.css";
@@ -203,6 +210,7 @@ function Dashboard({
     null,
   );
   const [sites, setSites] = useState<Site[]>([]);
+  const mapRef = useRef<MapRef | null>(null);
   const [loadingSites, setLoadingSites] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
   const [siteGeometryInput, setSiteGeometryInput] = useState(SAMPLE_POLYGON);
@@ -352,6 +360,41 @@ function Dashboard({
 
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
 
+  useEffect(() => {
+    if (!mapRef.current || sites.length === 0) {
+      return;
+    }
+
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+
+    for (const site of sites) {
+      for (const [lon, lat] of site.geometry.coordinates[0]) {
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      }
+    }
+
+    if (
+      Number.isFinite(minLon) &&
+      Number.isFinite(maxLon) &&
+      Number.isFinite(minLat) &&
+      Number.isFinite(maxLat)
+    ) {
+      mapRef.current.fitBounds(
+        [
+          [minLon, minLat],
+          [maxLon, maxLat],
+        ],
+        { padding: 48, duration: 500 },
+      );
+    }
+  }, [sites]);
+
   return (
     <main className="dashboard-layout">
       <header>
@@ -473,8 +516,13 @@ function Dashboard({
         ) : (
           <div className="map-wrap">
             <Map
+              ref={mapRef}
               mapboxAccessToken={MAPBOX_TOKEN}
-              initialViewState={{ longitude: 0, latitude: 0, zoom: 2 }}
+              initialViewState={{
+                longitude: 78.9629,
+                latitude: 20.5937,
+                zoom: 3.2,
+              }}
               mapStyle="mapbox://styles/mapbox/light-v11"
             >
               <Source id="sites" type="geojson" data={siteGeoJson}>
