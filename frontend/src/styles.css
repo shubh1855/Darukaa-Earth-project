@@ -459,23 +459,23 @@ select:focus {
 }
 
 .site-list li {
-  border: 2px solid var(--border);
+  border: 1px solid var(--border);
   padding: 0;
-  background: var(--surface-muted);
+  background: #ffffff;
   transition: all 180ms ease;
 }
 
 .site-list li:hover {
   border-color: var(--primary);
-  background: var(--surface);
+  border-width: 2px;
   transform: translateY(-2px);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 15%, transparent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .selected-site-card {
   border-color: var(--primary-strong) !important;
-  background: var(--surface) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+  border-width: 3px !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent) !important;
 }
 
 .project-list li:hover,
