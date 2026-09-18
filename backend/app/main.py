@@ -31,7 +31,8 @@ from .seed_metrics import seed_demo_metrics
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    if settings.database_bootstrap:
+        Base.metadata.create_all(bind=engine)
     yield
 
 

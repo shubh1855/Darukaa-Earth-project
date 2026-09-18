@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./darukaa.db"
+    database_bootstrap: bool = True
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
