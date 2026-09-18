@@ -231,7 +231,7 @@ npm run test:backend
 
 Selecting a site opens a right-side analytics drawer. The drawer shows 18 months of repeatable demo metrics when seeded, separate carbon and biodiversity trends, a three-month carbon forecast, month-over-month carbon changes, KPI deltas, carbon intensity, date filters, CSV export, and a site-boundary thumbnail. Demo metrics are indicators for review only, not scientific measurements.
 
-In development, click `Seed demo metrics` in an empty site drawer. The action is idempotent. It is enabled by Vite development mode or `VITE_ENABLE_DEMO_SEED=true`.
+In development, click `Seed demo metrics` in an empty site drawer. The action is idempotent. It is enabled by Vite development mode or `VITE_ENABLE_DEMO_SEED=true`. Set `VITE_ENABLE_DEMO_SEED=true` on a reviewer deployment so authenticated users can populate demo analytics without console access.
 
 Manual UI smoke path:
 

@@ -24,7 +24,10 @@ Set these variables on the frontend build:
 ```text
 VITE_API_URL=https://api.example.com/api
 VITE_MAPBOX_TOKEN=<restricted-public-mapbox-token>
+VITE_ENABLE_DEMO_SEED=true
 ```
+
+`VITE_ENABLE_DEMO_SEED=true` displays `Seed demo metrics` for authenticated reviewers when a selected site has no metrics. The seed endpoint only writes to projects owned by the signed-in user and remains idempotent. Disable this flag for production environments that should not expose demo data.
 
 Never commit production secrets. Restrict `VITE_MAPBOX_TOKEN` to deployed frontend origins.
 
