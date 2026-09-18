@@ -45,6 +45,11 @@
   box-sizing: border-box;
 }
 
+html {
+  scrollbar-color: var(--border-strong) var(--surface-muted);
+  scrollbar-width: thin;
+}
+
 body {
   margin: 0;
   background: var(--page);
@@ -52,6 +57,25 @@ body {
   transition:
     background 180ms ease,
     color 180ms ease;
+}
+
+::-webkit-scrollbar {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-muted);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid var(--surface-muted);
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 button,
@@ -163,8 +187,8 @@ h2 {
 }
 
 .sites-card {
-  grid-column: 1;
-  grid-row: 4;
+  grid-column: 1 / -1;
+  grid-row: 5;
 }
 
 .map-card {
@@ -178,9 +202,81 @@ h2 {
   grid-row: 4;
 }
 
+.analytics-backdrop {
+  position: fixed;
+  z-index: 19;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 35%);
+}
+
+.analytics-backdrop:hover:not(:disabled) {
+  background: rgb(0 0 0 / 35%);
+  border: 0;
+  transform: none;
+}
+
 .analytics-card {
-  grid-column: 1 / -1;
-  grid-row: 5;
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(900px, 100vw);
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  border-radius: 22px 0 0 22px;
+  transform: translateX(105%);
+  transition: transform 220ms ease;
+}
+
+.analytics-card.analytics-open {
+  transform: translateX(0);
+}
+
+.analytics-card::-webkit-scrollbar {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.analytics-card::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.analytics-card::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: content-box;
+}
+
+.analytics-card.is-scrolling {
+  scrollbar-color: var(--border-strong) var(--surface-muted);
+  scrollbar-width: thin;
+}
+
+.analytics-card.is-scrolling::-webkit-scrollbar {
+  width: 0.7rem;
+}
+
+.analytics-card.is-scrolling::-webkit-scrollbar-track {
+  background: var(--surface-muted);
+}
+
+.analytics-card.is-scrolling::-webkit-scrollbar-thumb {
+  border: 2px solid var(--surface-muted);
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.analytics-card.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 .auth-card {
@@ -211,6 +307,13 @@ select {
   background: var(--surface-muted);
   color: var(--text);
   outline: none;
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  border-color: rgb(255 255 255 / 15%);
+  background: #173a2c;
 }
 
 input:focus,
@@ -299,6 +402,20 @@ small {
   transform: none;
 }
 
+.site-item:hover .site-analytics-cta {
+  color: var(--primary-strong);
+  transform: translateX(2px);
+}
+
+.site-analytics-cta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition:
+    color 160ms ease,
+    transform 160ms ease;
+}
+
 .site-trend {
   display: block;
   margin-top: 0.45rem;
@@ -325,10 +442,19 @@ small {
 }
 
 .entry-mode {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0;
   margin-top: 1rem;
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+
+.entry-mode button {
+  border-color: transparent;
+  border-radius: 9px;
 }
 
 .mode-button,
@@ -487,6 +613,13 @@ small {
   stroke-width: 2;
 }
 
+.analytics-breadcrumb {
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
 .analytics-heading p {
   margin-top: 0.25rem;
   color: var(--muted);
@@ -529,6 +662,12 @@ small {
   color: var(--muted);
 }
 
+.trend-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
 .analytics-empty {
   margin-top: 1rem;
   padding: 1rem;
@@ -559,16 +698,80 @@ small {
   color: var(--muted);
 }
 
+.kpi-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.tooltip-trigger {
+  position: relative;
+  display: inline-grid;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--primary-strong);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: help;
+}
+
+.tooltip-trigger::after {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.55rem);
+  left: 0;
+  width: min(230px, 60vw);
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  content: attr(aria-label);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-0.25rem);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.tooltip-trigger:hover::after,
+.tooltip-trigger:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .kpi-card strong {
   font-size: clamp(1.5rem, 3vw, 2.2rem);
   color: var(--primary-strong);
 }
 
 .kpi-card em {
-  color: var(--primary-strong);
-  font-size: 0.8rem;
+  color: var(--muted);
+  font-size: clamp(0.72rem, 1.8vw, 0.9rem);
   font-style: normal;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.kpi-card em.trend-good {
+  color: var(--primary-strong);
+}
+
+.kpi-card em.trend-bad {
+  color: #ef4444;
+}
+
+.kpi-card em.trend-neutral {
+  color: var(--muted);
 }
 
 .status-row {
@@ -726,10 +929,13 @@ small {
   .dashboard-layout > .project-create-card,
   .dashboard-layout > .projects-card,
   .dashboard-layout > .sites-card,
-  .dashboard-layout > .create-site-card,
-  .dashboard-layout > .analytics-card {
+  .dashboard-layout > .create-site-card {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .trend-charts {
+    grid-template-columns: 1fr;
   }
 
   .map-card {
@@ -760,6 +966,11 @@ small {
 
   .analytics-heading {
     flex-wrap: wrap;
+  }
+
+  .analytics-header-actions {
+    width: 100%;
+    margin-left: 0;
   }
 
   .site-thumbnail {

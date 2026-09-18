@@ -134,6 +134,8 @@ type ApiError = { detail?: string };
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+const ENABLE_DEMO_SEED =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_SEED === "true";
 
 const SAMPLE_POLYGON = JSON.stringify(
   {
@@ -249,6 +251,19 @@ function deltaLabel(
   const percentage = previous === 0 ? 0 : (delta / previous) * 100;
   const precision = unit.includes("/") ? 3 : 1;
   return `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta).toFixed(precision)} ${unit} (${delta >= 0 ? "+" : ""}${percentage.toFixed(1)}% vs prior)`;
+}
+
+function deltaTone(
+  current: number | null,
+  previous: number | null,
+  favorableDirection: "increase" | "decrease",
+): string {
+  if (current === null || previous === null || current === previous) {
+    return "trend-neutral";
+  }
+  const delta = current - previous;
+  const isFavorable = favorableDirection === "increase" ? delta > 0 : delta < 0;
+  return isFavorable ? "trend-good" : "trend-bad";
 }
 
 function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
@@ -415,6 +430,8 @@ function Dashboard({
   );
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [seedingMetrics, setSeedingMetrics] = useState(false);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [analyticsChartMode, setAnalyticsChartMode] = useState<
     "all" | "carbon" | "biodiversity"
   >("all");
@@ -422,11 +439,12 @@ function Dashboard({
     "3M" | "6M" | "12M" | "All"
   >("6M");
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
-  const [seedingMetrics, setSeedingMetrics] = useState(false);
-  const [seedMessage, setSeedMessage] = useState<string | null>(null);
+  const [analyticsScrolling, setAnalyticsScrolling] = useState(false);
+
   const mapRef = useRef<MapRef | null>(null);
   const siteNameInputRef = useRef<HTMLInputElement | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
+  const analyticsScrollTimerRef = useRef<number | null>(null);
   const [loadingSites, setLoadingSites] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
   const [siteName, setSiteName] = useState("");
@@ -594,6 +612,55 @@ function Dashboard({
     };
   }, [selectedSiteId, token]);
 
+  function handleAnalyticsScroll() {
+    setAnalyticsScrolling(true);
+    if (analyticsScrollTimerRef.current !== null) {
+      window.clearTimeout(analyticsScrollTimerRef.current);
+    }
+    analyticsScrollTimerRef.current = window.setTimeout(() => {
+      setAnalyticsScrolling(false);
+      analyticsScrollTimerRef.current = null;
+    }, 700);
+  }
+
+  async function seedProjectMetrics() {
+    if (!selectedProjectId) return;
+
+    setSeedingMetrics(true);
+    setSeedMessage(null);
+    setAnalyticsError(null);
+    try {
+      const result = await request<{ created_count: number }>(
+        `/projects/${selectedProjectId}/analytics/seed`,
+        { method: "POST" },
+        token,
+      );
+      setSeedMessage(
+        result.created_count === 0
+          ? "Demo metrics already exist."
+          : `Created ${result.created_count} demo metric rows.`,
+      );
+      const projectData = await request<ProjectAnalytics>(
+        `/projects/${selectedProjectId}/analytics`,
+        {},
+        token,
+      );
+      setProjectAnalytics(projectData);
+      if (selectedSiteId) {
+        const siteData = await request<SiteAnalytics>(
+          `/sites/${selectedSiteId}/analytics`,
+          {},
+          token,
+        );
+        setSiteAnalytics(ensureMockHistory(siteData));
+      }
+    } catch (requestError) {
+      setAnalyticsError((requestError as Error).message);
+    } finally {
+      setSeedingMetrics(false);
+    }
+  }
+
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProjectError(null);
@@ -613,49 +680,6 @@ function Dashboard({
       setDescription("");
     } catch (requestError) {
       setProjectError((requestError as Error).message);
-    }
-  }
-
-  async function seedProjectMetrics() {
-    if (!selectedProjectId) {
-      return;
-    }
-
-    setSeedingMetrics(true);
-    setSeedMessage(null);
-    setAnalyticsError(null);
-    try {
-      const result = await request<{ created_count: number }>(
-        `/projects/${selectedProjectId}/analytics/seed`,
-        { method: "POST" },
-        token,
-      );
-      setSeedMessage(
-        result.created_count === 0
-          ? "Demo metrics already exist for this project."
-          : `Created ${result.created_count} demo metric rows.`,
-      );
-      const projectData = await request<ProjectAnalytics>(
-        `/projects/${selectedProjectId}/analytics`,
-        {},
-        token,
-      );
-      setProjectAnalytics(projectData);
-      if (selectedSiteId) {
-        setSiteAnalytics(
-          ensureMockHistory(
-            await request<SiteAnalytics>(
-              `/sites/${selectedSiteId}/analytics`,
-              {},
-              token,
-            ),
-          ),
-        );
-      }
-    } catch (requestError) {
-      setAnalyticsError((requestError as Error).message);
-    } finally {
-      setSeedingMetrics(false);
     }
   }
 
@@ -1543,19 +1567,6 @@ function Dashboard({
             </div>
           </div>
         ) : null}
-        {selectedProject && sites.length > 0 ? (
-          <div className="seed-action">
-            <button
-              type="button"
-              className="mode-button"
-              onClick={() => void seedProjectMetrics()}
-              disabled={seedingMetrics}
-            >
-              {seedingMetrics ? "Seeding metrics..." : "Seed demo metrics"}
-            </button>
-            {seedMessage ? <small>{seedMessage}</small> : null}
-          </div>
-        ) : null}
 
         {loadingSites ? <p>Loading sites...</p> : null}
         {sitesError ? <p className="error">{sitesError}</p> : null}
@@ -1584,9 +1595,8 @@ function Dashboard({
                   }
                 >
                   <strong>{site.name}</strong>
-                  <span>
-                    Area: {site.area_hectares.toFixed(2)} ha · Show on map
-                  </span>
+                  <span>Area: {site.area_hectares.toFixed(2)} ha</span>
+                  <span className="site-analytics-cta">View analytics →</span>
                   {projectAnalytics ? (
                     <span className="site-trend">
                       <Sparkline
@@ -1791,9 +1801,24 @@ function Dashboard({
         {createSiteError ? <p className="error">{createSiteError}</p> : null}
       </section>
 
-      <section className="card analytics-card">
+      {selectedSiteId ? (
+        <button
+          className="analytics-backdrop"
+          type="button"
+          aria-label="Close analytics"
+          onClick={() => setSelectedSiteId(null)}
+        />
+      ) : null}
+      <section
+        className={`card analytics-card ${selectedSiteId ? "analytics-open" : ""} ${analyticsScrolling ? "is-scrolling" : ""}`}
+        onScroll={handleAnalyticsScroll}
+      >
         <div className="analytics-heading">
           <div>
+            <div className="analytics-breadcrumb">
+              Projects / {selectedProject?.name ?? "Project"} /{" "}
+              {siteAnalytics?.site_name ?? "Site"}
+            </div>
             <h2>Site analytics</h2>
             <p>
               {siteAnalytics
@@ -1852,10 +1877,20 @@ function Dashboard({
         selectedSiteId &&
         siteAnalytics &&
         siteAnalytics.metrics.length === 0 ? (
-          <p className="analytics-empty">
-            No metrics available for this site yet. Seed demo metrics to view
-            trends.
-          </p>
+          <div className="analytics-empty">
+            <p>No metrics available for this site yet.</p>
+            {ENABLE_DEMO_SEED ? (
+              <button
+                type="button"
+                className="mode-button seed-demo-button"
+                onClick={() => void seedProjectMetrics()}
+                disabled={seedingMetrics}
+              >
+                {seedingMetrics ? "Seeding metrics..." : "Seed demo metrics"}
+              </button>
+            ) : null}
+            {seedMessage ? <small>{seedMessage}</small> : null}
+          </div>
         ) : null}
         {!analyticsLoading &&
         !analyticsError &&
@@ -1867,36 +1902,81 @@ function Dashboard({
               only; not scientific measurements.
             </p>
             <div className="kpi-grid">
-              <div
-                className="kpi-card"
-                title="Estimated carbon indicator for latest period."
-              >
-                <small>Latest carbon ⓘ</small>
+              <div className="kpi-card">
+                <small className="kpi-label">
+                  Latest carbon
+                  <span
+                    className="tooltip-trigger"
+                    tabIndex={0}
+                    role="img"
+                    aria-label="Estimated carbon indicator for latest period."
+                  >
+                    i
+                  </span>
+                </small>
                 <strong>
                   {siteAnalytics.latest_carbon_tonnes_co2e?.toFixed(2) ?? "—"}
                 </strong>
                 <span>tonnes CO2e</span>
-                <em className="trend-badge">{carbonDelta}</em>
+                <em
+                  className={`trend-badge ${deltaTone(
+                    latestMetric?.carbon_tonnes_co2e ?? null,
+                    previousMetric?.carbon_tonnes_co2e ?? null,
+                    "decrease",
+                  )}`}
+                >
+                  {carbonDelta}
+                </em>
               </div>
-              <div
-                className="kpi-card"
-                title="Demo biodiversity health score from 0 to 100."
-              >
-                <small>Latest biodiversity ⓘ</small>
+              <div className="kpi-card">
+                <small className="kpi-label">
+                  Latest biodiversity
+                  <span
+                    className="tooltip-trigger"
+                    tabIndex={0}
+                    role="img"
+                    aria-label="Demo biodiversity health score from 0 to 100."
+                  >
+                    i
+                  </span>
+                </small>
                 <strong>
                   {siteAnalytics.latest_biodiversity_score?.toFixed(1) ?? "—"}
                 </strong>
                 <span>score / 100</span>
-                <em className="trend-badge">{biodiversityDelta}</em>
+                <em
+                  className={`trend-badge ${deltaTone(
+                    latestMetric?.biodiversity_score ?? null,
+                    previousMetric?.biodiversity_score ?? null,
+                    "increase",
+                  )}`}
+                >
+                  {biodiversityDelta}
+                </em>
               </div>
-              <div
-                className="kpi-card"
-                title="Latest carbon divided by site area."
-              >
-                <small>Carbon intensity ⓘ</small>
+              <div className="kpi-card">
+                <small className="kpi-label">
+                  Carbon intensity
+                  <span
+                    className="tooltip-trigger"
+                    tabIndex={0}
+                    role="img"
+                    aria-label="Latest carbon divided by site area."
+                  >
+                    i
+                  </span>
+                </small>
                 <strong>{carbonPerHectare?.toFixed(2) ?? "—"}</strong>
                 <span>tCO2e / hectare</span>
-                <em className="trend-badge">{carbonIntensityDelta}</em>
+                <em
+                  className={`trend-badge ${deltaTone(
+                    carbonPerHectare,
+                    previousCarbonPerHectare,
+                    "decrease",
+                  )}`}
+                >
+                  {carbonIntensityDelta}
+                </em>
               </div>
             </div>
             <div className="status-row">
@@ -1956,35 +2036,38 @@ function Dashboard({
                 </button>
               ))}
             </div>
-            {analyticsChartMode === "all" || analyticsChartMode === "carbon" ? (
-              <div className="analytics-chart chart-block">
-                <h3>Carbon trend · tCO2e</h3>
-                <Line
-                  data={carbonChartData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: "index", intersect: false },
-                    scales: { y: { suggestedMin: 900 } },
-                  }}
-                />
-              </div>
-            ) : null}
-            {analyticsChartMode === "all" ||
-            analyticsChartMode === "biodiversity" ? (
-              <div className="analytics-chart chart-block">
-                <h3>Biodiversity trend · /100 · historical only</h3>
-                <Line
-                  data={biodiversityChartData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: "index", intersect: false },
-                    scales: { y: { suggestedMin: 72, max: 100 } },
-                  }}
-                />
-              </div>
-            ) : null}
+            <div className="trend-charts">
+              {analyticsChartMode === "all" ||
+              analyticsChartMode === "carbon" ? (
+                <div className="analytics-chart chart-block">
+                  <h3>Carbon trend · tCO2e</h3>
+                  <Line
+                    data={carbonChartData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      interaction: { mode: "index", intersect: false },
+                      scales: { y: { suggestedMin: 900 } },
+                    }}
+                  />
+                </div>
+              ) : null}
+              {analyticsChartMode === "all" ||
+              analyticsChartMode === "biodiversity" ? (
+                <div className="analytics-chart chart-block">
+                  <h3>Biodiversity trend · /100 · historical only</h3>
+                  <Line
+                    data={biodiversityChartData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      interaction: { mode: "index", intersect: false },
+                      scales: { y: { suggestedMin: 72, max: 100 } },
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
             <div className="analytics-chart delta-chart chart-block">
               <h3>Month-over-month carbon change</h3>
               <Bar
