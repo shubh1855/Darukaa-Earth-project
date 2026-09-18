@@ -13,3 +13,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def sqlalchemy_database_url(database_url: str) -> str:
+    """Use psycopg 3 for PostgreSQL URLs from local and hosted providers."""
+    if database_url.startswith("postgres://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgres://")
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgresql://")
+    return database_url
