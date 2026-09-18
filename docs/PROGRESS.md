@@ -95,55 +95,55 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 
 ### 4.1 Data model and migration
 
-- [ ] Add `SiteMetric` SQLAlchemy model linked to `Site`.
-- [ ] Store one metric row per site and period with:
+- [x] Add `SiteMetric` SQLAlchemy model linked to `Site`.
+- [x] Store one metric row per site and period with:
   - `site_id` foreign key.
   - `period` as an ordered ISO date or month value.
   - `carbon_tonnes_co2e` nullable numeric value.
   - `biodiversity_score` nullable numeric value from 0 to 100.
   - `created_at` timestamp.
-- [ ] Add a unique constraint on `(site_id, period)`.
-- [ ] Add indexes for `site_id` and ordered `period` lookups.
-- [ ] Add an Alembic migration that works with PostgreSQL and SQLite tests.
-- [ ] Preserve cascade behavior when a project/site is removed.
+- [x] Add a unique constraint on `(site_id, period)`.
+- [x] Add indexes for `site_id` and ordered `period` lookups.
+- [x] Add an Alembic migration that works with PostgreSQL and SQLite tests.
+- [x] Preserve cascade behavior when a project/site is removed.
 
 ### 4.2 Seed data and API
 
-- [ ] Add a repeatable demo metric seed command or service.
-- [ ] Seed at least three periods per demo site.
-- [ ] Make seeding idempotent using `(site_id, period)`.
-- [ ] Add an authenticated site analytics endpoint:
+- [x] Add a repeatable demo metric seed command or service.
+- [x] Seed at least three periods per demo site.
+- [x] Make seeding idempotent using `(site_id, period)`.
+- [x] Add an authenticated site analytics endpoint:
   - `GET /api/sites/{id}/analytics`
   - Verify the site belongs to a project owned by the current user.
   - Return site identity, area, ordered metric periods, and latest KPIs.
-- [ ] Return periods in ascending chronological order.
-- [ ] Return `null` KPI values when a metric is unavailable instead of inventing values.
-- [ ] Reject or validate biodiversity scores outside `0–100`.
-- [ ] Add response schemas and clear API error responses.
+- [x] Return periods in ascending chronological order.
+- [x] Return `null` KPI values when a metric is unavailable instead of inventing values.
+- [x] Reject or validate biodiversity scores outside `0–100`.
+- [x] Add response schemas and clear API error responses.
 
 ### 4.3 Analytics UI
 
-- [ ] Open a site analytics panel when a site is selected.
-- [ ] Show site name and hectares in the panel header.
-- [ ] Add latest carbon KPI with `tonnes CO2e` units.
-- [ ] Add latest biodiversity KPI with `/100` units.
-- [ ] Add a Chart.js time-series chart for carbon and biodiversity metrics.
-- [ ] Label every axis, value, unit, and time period.
-- [ ] Add loading, API error, and no-data states.
-- [ ] Keep the current project/map context when opening and closing analytics.
-- [ ] Ensure light and dark themes style the panel and chart consistently.
+- [x] Open a site analytics panel when a site is selected.
+- [x] Show site name and hectares in the panel header.
+- [x] Add latest carbon KPI with `tonnes CO2e` units.
+- [x] Add latest biodiversity KPI with `/100` units.
+- [x] Add a Chart.js time-series chart for carbon and biodiversity metrics.
+- [x] Label every axis, value, unit, and time period.
+- [x] Add loading, API error, and no-data states.
+- [x] Keep the current project/map context when opening and closing analytics.
+- [x] Ensure light and dark themes style the panel and chart consistently.
 - [ ] Do not communicate metric status through color alone.
 
 ### 4.4 Tests and acceptance
 
 - [ ] Add model/migration coverage for the unique site-period constraint.
-- [ ] Add seed idempotency tests.
+- [x] Add seed idempotency tests.
 - [ ] Add analytics response ordering tests.
-- [ ] Add authenticated ownership/isolation tests.
+- [x] Add authenticated ownership/isolation tests.
 - [ ] Add latest KPI selection tests.
-- [ ] Add empty metrics response tests.
+- [x] Add empty metrics response tests.
 - [ ] Add frontend analytics UI smoke coverage for loading, populated, and empty states.
-- [ ] Verify the full backend suite, integration suite, frontend lint, and production build.
+- [ ] Verify the full backend suite with PostGIS, integration suite, frontend lint, and production build.
 
 ### 4.5 Recommended implementation order
 
