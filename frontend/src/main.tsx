@@ -10,6 +10,7 @@ import {
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  BarElement,
   CategoryScale,
   Chart as ChartJS,
   Filler,
@@ -19,16 +20,23 @@ import {
   PointElement,
   Tooltip,
 } from "chart.js";
-import { Line } from "react-chartjs-2";
+import { Bar, Line } from "react-chartjs-2";
 import Map, { Layer, MapRef, Source } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import FreehandMode from "mapbox-gl-draw-freehand-mode";
+
+import {
+  ensureMockHistory,
+  formatMonthLabel,
+  linearForecast,
+} from "./mockData.js";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import "./styles.css";
 
 ChartJS.register(
+  BarElement,
   CategoryScale,
   Filler,
   Legend,
@@ -73,6 +81,25 @@ type SiteAnalytics = {
   latest_carbon_tonnes_co2e: number | null;
   latest_biodiversity_score: number | null;
   metrics: SiteMetric[];
+};
+
+type ProjectSiteAnalytics = {
+  site_id: number;
+  site_name: string;
+  area_hectares: number;
+  latest_carbon_tonnes_co2e: number | null;
+  latest_biodiversity_score: number | null;
+  carbon_history: Array<number | null>;
+};
+
+type ProjectAnalytics = {
+  project_id: number;
+  site_count: number;
+  total_area_hectares: number;
+  total_latest_carbon_tonnes_co2e: number | null;
+  average_latest_biodiversity_score: number | null;
+  sites_with_metrics: number;
+  sites: ProjectSiteAnalytics[];
 };
 
 type SitePointFeatureCollection = {
@@ -210,12 +237,18 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-function trendLabel(current: number | null, previous: number | null): string {
+function deltaLabel(
+  current: number | null,
+  previous: number | null,
+  unit: string,
+): string {
   if (current === null || previous === null) {
     return "No prior period";
   }
-  const change = current - previous;
-  return `${change >= 0 ? "+" : ""}${change.toFixed(1)} vs prior`;
+  const delta = current - previous;
+  const percentage = previous === 0 ? 0 : (delta / previous) * 100;
+  const precision = unit.includes("/") ? 3 : 1;
+  return `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta).toFixed(precision)} ${unit} (${delta >= 0 ? "+" : ""}${percentage.toFixed(1)}% vs prior)`;
 }
 
 function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
@@ -295,6 +328,55 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   );
 }
 
+function getThumbnailPolygonPoints(geometry: PolygonGeometry): string {
+  const ring = geometry.coordinates[0] ?? [];
+  const longitudes = ring.map(([longitude]) => longitude);
+  const latitudes = ring.map(([, latitude]) => latitude);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const longitudeRange = maxLongitude - minLongitude || 1;
+  const latitudeRange = maxLatitude - minLatitude || 1;
+
+  return ring
+    .map(([longitude, latitude]) => {
+      const x = 12 + ((longitude - minLongitude) / longitudeRange) * 76;
+      const y = 50 - ((latitude - minLatitude) / latitudeRange) * 40;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function Sparkline({ values }: { values: Array<number | null> }) {
+  const points = values.filter((value): value is number => value !== null);
+  if (points.length < 2) {
+    return <span className="sparkline-empty">No trend</span>;
+  }
+
+  const minimum = Math.min(...points);
+  const maximum = Math.max(...points);
+  const range = maximum - minimum || 1;
+  const path = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * 100;
+      const y = 28 - (((value ?? minimum) - minimum) / range) * 24;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <svg
+      className="sparkline"
+      viewBox="0 0 100 30"
+      role="img"
+      aria-label="Carbon trend"
+    >
+      <polyline points={path} />
+    </svg>
+  );
+}
+
 function ThemeIcon({ kind }: { kind: "sun" | "moon" }) {
   return kind === "sun" ? (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -325,6 +407,8 @@ function Dashboard({
     null,
   );
   const [sites, setSites] = useState<Site[]>([]);
+  const [projectAnalytics, setProjectAnalytics] =
+    useState<ProjectAnalytics | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
   const [siteAnalytics, setSiteAnalytics] = useState<SiteAnalytics | null>(
     null,
@@ -334,6 +418,12 @@ function Dashboard({
   const [analyticsChartMode, setAnalyticsChartMode] = useState<
     "all" | "carbon" | "biodiversity"
   >("all");
+  const [analyticsRange, setAnalyticsRange] = useState<
+    "3M" | "6M" | "12M" | "All"
+  >("6M");
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [seedingMetrics, setSeedingMetrics] = useState(false);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const mapRef = useRef<MapRef | null>(null);
   const siteNameInputRef = useRef<HTMLInputElement | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -371,6 +461,10 @@ function Dashboard({
     document.documentElement.dataset.theme = darkMode ? "dark" : "light";
   }, [darkMode]);
 
+  useEffect(() => {
+    setThumbnailFailed(false);
+  }, [selectedSiteId]);
+
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
     setProjectError(null);
@@ -404,6 +498,7 @@ function Dashboard({
 
   useEffect(() => {
     setSelectedSiteId(null);
+    setThumbnailFailed(false);
     setSiteAnalytics(null);
     setAnalyticsError(null);
     setDrawStats(null);
@@ -444,6 +539,28 @@ function Dashboard({
   }, [loadSites]);
 
   useEffect(() => {
+    if (!selectedProjectId) {
+      setProjectAnalytics(null);
+      return;
+    }
+
+    let cancelled = false;
+    void request<ProjectAnalytics>(
+      `/projects/${selectedProjectId}/analytics`,
+      {},
+      token,
+    ).then((data) => {
+      if (!cancelled) {
+        setProjectAnalytics(data);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProjectId, token]);
+
+  useEffect(() => {
     if (!selectedSiteId) {
       setSiteAnalytics(null);
       setAnalyticsError(null);
@@ -457,7 +574,7 @@ function Dashboard({
     void request<SiteAnalytics>(`/sites/${selectedSiteId}/analytics`, {}, token)
       .then((data) => {
         if (!cancelled) {
-          setSiteAnalytics(data);
+          setSiteAnalytics(ensureMockHistory(data));
         }
       })
       .catch((requestError) => {
@@ -496,6 +613,49 @@ function Dashboard({
       setDescription("");
     } catch (requestError) {
       setProjectError((requestError as Error).message);
+    }
+  }
+
+  async function seedProjectMetrics() {
+    if (!selectedProjectId) {
+      return;
+    }
+
+    setSeedingMetrics(true);
+    setSeedMessage(null);
+    setAnalyticsError(null);
+    try {
+      const result = await request<{ created_count: number }>(
+        `/projects/${selectedProjectId}/analytics/seed`,
+        { method: "POST" },
+        token,
+      );
+      setSeedMessage(
+        result.created_count === 0
+          ? "Demo metrics already exist for this project."
+          : `Created ${result.created_count} demo metric rows.`,
+      );
+      const projectData = await request<ProjectAnalytics>(
+        `/projects/${selectedProjectId}/analytics`,
+        {},
+        token,
+      );
+      setProjectAnalytics(projectData);
+      if (selectedSiteId) {
+        setSiteAnalytics(
+          ensureMockHistory(
+            await request<SiteAnalytics>(
+              `/sites/${selectedSiteId}/analytics`,
+              {},
+              token,
+            ),
+          ),
+        );
+      }
+    } catch (requestError) {
+      setAnalyticsError((requestError as Error).message);
+    } finally {
+      setSeedingMetrics(false);
     }
   }
 
@@ -889,53 +1049,191 @@ function Dashboard({
 
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
 
-  const analyticsChartData = useMemo(() => {
+  const visibleMetrics = useMemo(() => {
     if (!siteAnalytics) {
-      return null;
+      return [];
     }
+    if (analyticsRange === "All") {
+      return siteAnalytics.metrics;
+    }
+    return siteAnalytics.metrics.slice(-Number.parseInt(analyticsRange, 10));
+  }, [analyticsRange, siteAnalytics]);
 
-    const datasets = [];
-    if (analyticsChartMode !== "biodiversity") {
-      datasets.push({
-        label: "Carbon (tonnes CO2e)",
-        data: siteAnalytics.metrics.map((metric) => metric.carbon_tonnes_co2e),
-        borderColor: "#168a61",
-        backgroundColor: "#168a6126",
+  const carbonForecast = siteAnalytics
+    ? linearForecast(siteAnalytics.metrics, 3)
+    : [];
+  const visibleLabels = visibleMetrics.map((metric) =>
+    formatMonthLabel(metric.period),
+  );
+  const forecastLabels = carbonForecast.map((point) =>
+    formatMonthLabel(point.period),
+  );
+  const chartLabels = [...visibleLabels, ...forecastLabels];
+  const carbonValues = visibleMetrics.map(
+    (metric) => metric.carbon_tonnes_co2e,
+  );
+  const biodiversityValues = visibleMetrics.map(
+    (metric) => metric.biodiversity_score,
+  );
+
+  const carbonChartData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: "Carbon (tCO2e)",
+        data: [
+          ...carbonValues,
+          ...Array.from({ length: carbonForecast.length }, () => null),
+        ],
+        borderColor: "#00e5a0",
+        backgroundColor: "#00e5a026",
         fill: true,
         tension: 0.3,
-      });
-    }
-    if (analyticsChartMode !== "carbon") {
-      datasets.push({
-        label: "Biodiversity score",
-        data: siteAnalytics.metrics.map((metric) => metric.biodiversity_score),
-        borderColor: "#c58b27",
-        backgroundColor: "#c58b2726",
+      },
+      {
+        label: "Forecast",
+        data: [
+          ...Array.from(
+            { length: Math.max(0, visibleMetrics.length - 1) },
+            () => null,
+          ),
+          carbonValues[carbonValues.length - 1] ?? null,
+          ...carbonForecast.map((point) => point.value),
+        ],
+        borderColor: "#f59e0b",
+        backgroundColor: "transparent",
+        borderDash: [6, 5],
+        pointRadius: 2,
         fill: false,
         tension: 0.3,
-        yAxisID: "biodiversity",
-      });
-    }
+      },
+    ],
+  };
 
-    return {
-      labels: siteAnalytics.metrics.map((metric) => metric.period),
-      datasets,
-    };
-  }, [analyticsChartMode, siteAnalytics]);
+  const biodiversityChartData = {
+    labels: visibleLabels,
+    datasets: [
+      {
+        label: "Biodiversity (/100)",
+        data: biodiversityValues,
+        borderColor: "#f59e0b",
+        backgroundColor: "#f59e0b26",
+        fill: true,
+        tension: 0.3,
+      },
+    ],
+  };
+
+  const deltaBarData = {
+    labels: visibleLabels,
+    datasets: [
+      {
+        label: "Carbon change (tCO2e)",
+        data: visibleMetrics.map((metric, index) => {
+          if (index === 0) return null;
+          return (
+            (metric.carbon_tonnes_co2e ?? 0) -
+            (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0)
+          );
+        }),
+        backgroundColor: visibleMetrics.map((metric, index) => {
+          if (index === 0) return "transparent";
+          const delta =
+            (metric.carbon_tonnes_co2e ?? 0) -
+            (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0);
+          return delta <= 0 ? "#00e5a0" : "#ef4444";
+        }),
+        borderRadius: 5,
+        barPercentage: 0.85,
+        categoryPercentage: 0.82,
+      },
+    ],
+  };
 
   const latestMetric =
     siteAnalytics?.metrics[siteAnalytics.metrics.length - 1] ?? null;
   const previousMetric =
     siteAnalytics?.metrics[siteAnalytics.metrics.length - 2] ?? null;
   const latestPeriod = latestMetric?.period ?? null;
-  const carbonTrend = trendLabel(
+  const carbonDelta = deltaLabel(
     latestMetric?.carbon_tonnes_co2e ?? null,
     previousMetric?.carbon_tonnes_co2e ?? null,
+    "tCO2e",
   );
-  const biodiversityTrend = trendLabel(
+  const biodiversityDelta = deltaLabel(
     latestMetric?.biodiversity_score ?? null,
     previousMetric?.biodiversity_score ?? null,
+    "pts",
   );
+  const carbonPerHectare =
+    siteAnalytics &&
+    latestMetric?.carbon_tonnes_co2e !== null &&
+    latestMetric?.carbon_tonnes_co2e !== undefined
+      ? latestMetric.carbon_tonnes_co2e / siteAnalytics.area_hectares
+      : null;
+  const previousCarbonPerHectare =
+    siteAnalytics &&
+    previousMetric?.carbon_tonnes_co2e !== null &&
+    previousMetric?.carbon_tonnes_co2e !== undefined
+      ? previousMetric.carbon_tonnes_co2e / siteAnalytics.area_hectares
+      : null;
+  const carbonIntensityDelta = deltaLabel(
+    carbonPerHectare,
+    previousCarbonPerHectare,
+    "tCO2e/ha",
+  );
+  const carbonOnTrack =
+    latestMetric?.carbon_tonnes_co2e !== null &&
+    latestMetric?.carbon_tonnes_co2e !== undefined &&
+    previousMetric?.carbon_tonnes_co2e !== null &&
+    previousMetric?.carbon_tonnes_co2e !== undefined &&
+    latestMetric.carbon_tonnes_co2e < previousMetric.carbon_tonnes_co2e;
+  const biodiversityOnTrack =
+    latestMetric?.biodiversity_score !== null &&
+    latestMetric?.biodiversity_score !== undefined &&
+    latestMetric.biodiversity_score >= 72;
+  const biodiversityStatusClass =
+    latestMetric?.biodiversity_score === null ||
+    latestMetric?.biodiversity_score === undefined
+      ? "status-danger"
+      : latestMetric.biodiversity_score >= 72
+        ? "status-good"
+        : latestMetric.biodiversity_score >= 65
+          ? "status-warning"
+          : "status-danger";
+  const selectedSite = sites.find((site) => site.id === selectedSiteId);
+  const siteThumbnailUrl =
+    selectedSite && MAPBOX_TOKEN && !thumbnailFailed
+      ? `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/geojson(${encodeURIComponent(JSON.stringify({ type: "Feature", geometry: selectedSite.geometry }))})/auto/320x180?padding=24&access_token=${MAPBOX_TOKEN}`
+      : null;
+
+  function exportAnalyticsCsv() {
+    if (!siteAnalytics) return;
+    const rows = [
+      ["period", "carbon_tonnes_co2e", "biodiversity_score", "carbon_delta"],
+      ...visibleMetrics.map((metric, index) => {
+        const previous = visibleMetrics[index - 1];
+        const delta =
+          index === 0 || !previous
+            ? ""
+            : (metric.carbon_tonnes_co2e ?? 0) -
+              (previous.carbon_tonnes_co2e ?? 0);
+        return [
+          metric.period,
+          metric.carbon_tonnes_co2e ?? "",
+          metric.biodiversity_score ?? "",
+          delta,
+        ];
+      }),
+    ];
+    const csv = rows.map((row) => row.join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${siteAnalytics.site_name.replace(/\s+/g, "-").toLowerCase()}-analytics.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   function focusSite(site: Site) {
     setSelectedSiteId(site.id);
@@ -1215,6 +1513,49 @@ function Dashboard({
         ) : (
           <p>Select a project to load sites.</p>
         )}
+        {projectAnalytics ? (
+          <div className="project-summary-grid">
+            <div>
+              <strong>{projectAnalytics.total_area_hectares.toFixed(2)}</strong>
+              <span>Total hectares</span>
+            </div>
+            <div>
+              <strong>
+                {projectAnalytics.total_latest_carbon_tonnes_co2e?.toFixed(2) ??
+                  "—"}
+              </strong>
+              <span>Latest tonnes CO2e</span>
+            </div>
+            <div>
+              <strong>
+                {projectAnalytics.average_latest_biodiversity_score?.toFixed(
+                  1,
+                ) ?? "—"}
+              </strong>
+              <span>Average biodiversity</span>
+            </div>
+            <div>
+              <strong>
+                {projectAnalytics.sites_with_metrics}/
+                {projectAnalytics.site_count}
+              </strong>
+              <span>Sites with metrics</span>
+            </div>
+          </div>
+        ) : null}
+        {selectedProject && sites.length > 0 ? (
+          <div className="seed-action">
+            <button
+              type="button"
+              className="mode-button"
+              onClick={() => void seedProjectMetrics()}
+              disabled={seedingMetrics}
+            >
+              {seedingMetrics ? "Seeding metrics..." : "Seed demo metrics"}
+            </button>
+            {seedMessage ? <small>{seedMessage}</small> : null}
+          </div>
+        ) : null}
 
         {loadingSites ? <p>Loading sites...</p> : null}
         {sitesError ? <p className="error">{sitesError}</p> : null}
@@ -1246,6 +1587,17 @@ function Dashboard({
                   <span>
                     Area: {site.area_hectares.toFixed(2)} ha · Show on map
                   </span>
+                  {projectAnalytics ? (
+                    <span className="site-trend">
+                      <Sparkline
+                        values={
+                          projectAnalytics.sites.find(
+                            (summary) => summary.site_id === site.id,
+                          )?.carbon_history ?? []
+                        }
+                      />
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}
@@ -1449,14 +1801,44 @@ function Dashboard({
                 : "Select a site to view performance"}
             </p>
           </div>
-          {siteAnalytics ? (
-            <button
-              className="mode-button"
-              type="button"
-              onClick={() => setSelectedSiteId(null)}
-            >
-              Close
-            </button>
+          <div className="analytics-header-actions">
+            {siteAnalytics ? (
+              <button
+                className="mode-button"
+                type="button"
+                onClick={exportAnalyticsCsv}
+              >
+                Export CSV
+              </button>
+            ) : null}
+            {siteAnalytics ? (
+              <button
+                className="mode-button"
+                type="button"
+                onClick={() => setSelectedSiteId(null)}
+              >
+                Close
+              </button>
+            ) : null}
+          </div>
+          {selectedSite ? (
+            siteThumbnailUrl ? (
+              <img
+                className="site-thumbnail"
+                src={siteThumbnailUrl}
+                alt="Selected site boundary map"
+                onError={() => setThumbnailFailed(true)}
+              />
+            ) : (
+              <div className="site-thumbnail site-thumbnail-fallback">
+                <span>Site boundary</span>
+                <svg viewBox="0 0 100 60" aria-hidden="true">
+                  <polygon
+                    points={getThumbnailPolygonPoints(selectedSite.geometry)}
+                  />
+                </svg>
+              </div>
+            )
           ) : null}
         </div>
 
@@ -1494,7 +1876,7 @@ function Dashboard({
                   {siteAnalytics.latest_carbon_tonnes_co2e?.toFixed(2) ?? "—"}
                 </strong>
                 <span>tonnes CO2e</span>
-                <em className="trend-badge">{carbonTrend}</em>
+                <em className="trend-badge">{carbonDelta}</em>
               </div>
               <div
                 className="kpi-card"
@@ -1505,8 +1887,36 @@ function Dashboard({
                   {siteAnalytics.latest_biodiversity_score?.toFixed(1) ?? "—"}
                 </strong>
                 <span>score / 100</span>
-                <em className="trend-badge">{biodiversityTrend}</em>
+                <em className="trend-badge">{biodiversityDelta}</em>
               </div>
+              <div
+                className="kpi-card"
+                title="Latest carbon divided by site area."
+              >
+                <small>Carbon intensity ⓘ</small>
+                <strong>{carbonPerHectare?.toFixed(2) ?? "—"}</strong>
+                <span>tCO2e / hectare</span>
+                <em className="trend-badge">{carbonIntensityDelta}</em>
+              </div>
+            </div>
+            <div className="status-row">
+              <span className="status-message">
+                <span
+                  className={`status-dot ${carbonOnTrack ? "status-good" : "status-danger"}`}
+                  aria-hidden="true"
+                />
+                Carbon {carbonOnTrack ? "reducing on track" : "not reducing"}
+              </span>
+              <span className="status-message">
+                <span
+                  className={`status-dot ${biodiversityStatusClass}`}
+                  aria-hidden="true"
+                />
+                Biodiversity{" "}
+                {biodiversityOnTrack
+                  ? "within target range"
+                  : "below target range"}
+              </span>
             </div>
             <div
               className="chart-toolbar"
@@ -1531,51 +1941,60 @@ function Dashboard({
                 </button>
               ))}
             </div>
-            {analyticsChartData ? (
-              <div className="analytics-chart">
+            <div className="range-toolbar" role="group" aria-label="Date range">
+              <span>Date range</span>
+              {(["3M", "6M", "12M", "All"] as const).map((range) => (
+                <button
+                  key={range}
+                  type="button"
+                  className={
+                    analyticsRange === range ? "mode-active" : "mode-button"
+                  }
+                  onClick={() => setAnalyticsRange(range)}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+            {analyticsChartMode === "all" || analyticsChartMode === "carbon" ? (
+              <div className="analytics-chart chart-block">
+                <h3>Carbon trend · tCO2e</h3>
                 <Line
-                  data={analyticsChartData}
+                  data={carbonChartData}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: "index", intersect: false },
-                    scales: {
-                      y: {
-                        title: { display: true, text: "Carbon tonnes CO2e" },
-                        beginAtZero: true,
-                      },
-                      biodiversity: {
-                        position: "right",
-                        min: 0,
-                        max: 100,
-                        title: { display: true, text: "Biodiversity / 100" },
-                        grid: { drawOnChartArea: false },
-                      },
-                    },
+                    scales: { y: { suggestedMin: 900 } },
                   }}
                 />
               </div>
             ) : null}
-            <div className="analytics-table-wrap">
-              <table className="analytics-table">
-                <caption>Historical site indicators</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Period</th>
-                    <th scope="col">Carbon (t CO2e)</th>
-                    <th scope="col">Biodiversity (/100)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...siteAnalytics.metrics].reverse().map((metric) => (
-                    <tr key={metric.period}>
-                      <th scope="row">{metric.period}</th>
-                      <td>{metric.carbon_tonnes_co2e?.toFixed(2) ?? "—"}</td>
-                      <td>{metric.biodiversity_score?.toFixed(1) ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {analyticsChartMode === "all" ||
+            analyticsChartMode === "biodiversity" ? (
+              <div className="analytics-chart chart-block">
+                <h3>Biodiversity trend · /100 · historical only</h3>
+                <Line
+                  data={biodiversityChartData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: "index", intersect: false },
+                    scales: { y: { suggestedMin: 72, max: 100 } },
+                  }}
+                />
+              </div>
+            ) : null}
+            <div className="analytics-chart delta-chart chart-block">
+              <h3>Month-over-month carbon change</h3>
+              <Bar
+                data={deltaBarData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
             </div>
           </>
         ) : null}
