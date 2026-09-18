@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from alembic import command
 from alembic.config import Config
-from app.config import settings
+from app.config import settings, sqlalchemy_database_url
 
 
 @pytest.mark.integration
@@ -14,7 +14,7 @@ def test_postgis_migration_creates_polygon_geometry_column():
     if not settings.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
         pytest.skip("PostGIS integration requires a PostgreSQL DATABASE_URL")
 
-    engine = create_engine(settings.database_url)
+    engine = create_engine(sqlalchemy_database_url(settings.database_url))
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))

@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./darukaa.db"
+    database_bootstrap: bool = True
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
@@ -12,3 +13,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def sqlalchemy_database_url(database_url: str) -> str:
+    """Use psycopg 3 for PostgreSQL URLs from local and hosted providers."""
+    if database_url.startswith("postgres://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgres://")
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgresql://")
+    return database_url

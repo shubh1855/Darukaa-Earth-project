@@ -66,7 +66,7 @@ For child resources, load through parent ownership or join ownership before retu
 
 ### Database changes
 
-All production schema changes must use Alembic migrations. Runtime `Base.metadata.create_all` exists only as bootstrap support for the current local MVP and tests. Replace it with migration startup before deployment.
+All production schema changes must use Alembic migrations. Runtime `Base.metadata.create_all` exists only as local/test bootstrap support. Set `DATABASE_BOOTSTRAP=false` in production and run `alembic upgrade head` as a deployment step before starting the API.
 
 Next migration sequence:
 
