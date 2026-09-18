@@ -19,6 +19,20 @@ Health response:
 {"status":"ok"}
 ```
 
+## Document structure
+
+This brief follows the hackathon submission requirements:
+
+1. Project identity and live links.
+2. Reviewer access and demo flow.
+3. Product features and analytics scope.
+4. System architecture and deployment topology.
+5. Database schema and PostGIS design.
+6. Production configuration and migration process.
+7. Local setup instructions.
+8. Quality checks, CI, and API smoke testing.
+9. Trade-offs, limitations, and submission checklist.
+
 ## Reviewer access
 
 1. Open the live frontend.
@@ -53,15 +67,82 @@ No shared reviewer password is required. Each reviewer can create a temporary ac
 
 ## Architecture
 
-```text
-React + TypeScript + Vite
-        |
-        | REST + JWT
-        v
-FastAPI + SQLAlchemy + Alembic
-        |
-        v
-PostgreSQL + PostGIS
+### Application architecture
+
+```mermaid
+flowchart TD
+    Browser[React + TypeScript + Vite]
+    Map[Mapbox GL JS map]
+    Charts[Chart.js analytics]
+    API[FastAPI REST API]
+    Auth[JWT authentication]
+    ORM[SQLAlchemy ORM]
+    Migrations[Alembic migrations]
+    DB[(PostgreSQL + PostGIS)]
+
+    Browser --> Map
+    Browser --> Charts
+    Browser -->|REST + bearer token| API
+    API --> Auth
+    API --> ORM
+    API --> Migrations
+    ORM --> DB
+    Migrations --> DB
+```
+
+### Production deployment topology
+
+```mermaid
+flowchart LR
+    Reviewer[Reviewer browser]
+    Frontend[Render Static Site]
+    API[Render Web Service]
+    Database[(Render Postgres with PostGIS)]
+    Mapbox[Mapbox GL JS\nrestricted public token]
+
+    Reviewer --> Frontend
+    Frontend -->|HTTPS REST + JWT| API
+    Frontend -->|Map tiles and map rendering| Mapbox
+    API -->|Private PostgreSQL connection| Database
+```
+
+### Request and data flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as React dashboard
+    participant API as FastAPI API
+    participant DB as PostgreSQL/PostGIS
+
+    User->>UI: Select project and site
+    UI->>API: GET /api/sites/{id}/analytics
+    API->>API: Validate JWT and project ownership
+    API->>DB: Query ordered site metrics
+    DB-->>API: Site geometry, area, and metrics
+    API-->>UI: Analytics response
+    UI->>UI: Render KPIs, charts, forecast, and status
+```
+
+### Deployment release flow
+
+```mermaid
+flowchart TD
+    Commit[Push feature branch]
+    CI[GitHub Actions checks]
+    Build[Render Python 3.13 build]
+    Migration[Alembic upgrade head]
+    APIDeploy[Deploy FastAPI service]
+    FrontendBuild[Build Vite static site]
+    Smoke[API smoke test and reviewer flow]
+
+    Commit --> CI
+    CI --> Build
+    Build --> Migration
+    Migration --> APIDeploy
+    CI --> FrontendBuild
+    APIDeploy --> Smoke
+    FrontendBuild --> Smoke
 ```
 
 ### Frontend
