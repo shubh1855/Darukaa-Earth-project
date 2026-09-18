@@ -6,34 +6,45 @@ export function useSites(token: string, projectId: number | null) {
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trigger, setTrigger] = useState(0);
 
-  const loadSites = useCallback(async () => {
+  const reload = useCallback(() => {
+    setTrigger((prev) => prev + 1);
+  }, []);
+
+  useEffect(() => {
     if (!projectId) {
       setSites([]);
       setError(null);
+      setLoading(false);
       return;
     }
 
+    let cancelled = false;
     setLoading(true);
     setError(null);
 
-    try {
-      const data = await request<Site[]>(
-        `/projects/${projectId}/sites`,
-        {},
-        token,
-      );
-      setSites(data);
-    } catch (requestError) {
-      setError((requestError as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, token]);
+    void request<Site[]>(`/projects/${projectId}/sites`, {}, token)
+      .then((data) => {
+        if (!cancelled) {
+          setSites(data);
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setError((requestError as Error).message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
 
-  useEffect(() => {
-    void loadSites();
-  }, [loadSites]);
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, token, trigger]);
 
-  return { sites, setSites, loading, error, reload: loadSites };
+  return { sites, setSites, loading, error, reload };
 }
