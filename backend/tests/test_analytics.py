@@ -1,8 +1,10 @@
 from datetime import date
 
+import pytest
 from conftest import register_and_get_token
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import Base
@@ -48,6 +50,54 @@ def test_site_analytics_returns_empty_state(client: TestClient):
     assert response.json()["metrics"] == []
     assert response.json()["latest_carbon_tonnes_co2e"] is None
     assert response.json()["latest_biodiversity_score"] is None
+
+
+def test_site_analytics_orders_metrics_and_selects_latest_kpis(client: TestClient):
+    token = register_and_get_token(client, "analytics-ordering@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    project_id = _create_project(client, headers)
+    site_id = _create_site(client, project_id, headers)
+
+    seed_response = client.post(
+        f"/api/projects/{project_id}/analytics/seed",
+        headers=headers,
+    )
+    assert seed_response.status_code == 200
+
+    response = client.get(f"/api/sites/{site_id}/analytics", headers=headers)
+
+    assert response.status_code == 200
+    metrics = response.json()["metrics"]
+    periods = [metric["period"] for metric in metrics]
+    assert periods == sorted(periods)
+    assert response.json()["latest_carbon_tonnes_co2e"] == metrics[-1]["carbon_tonnes_co2e"]
+    assert response.json()["latest_biodiversity_score"] == metrics[-1]["biodiversity_score"]
+
+
+def test_site_metric_period_is_unique(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'unique-metrics.db'}")
+    Base.metadata.create_all(bind=engine)
+
+    with Session(engine) as db:
+        first = SiteMetric(
+            site_id=1,
+            period=date(2026, 1, 1),
+            carbon_tonnes_co2e=100,
+            biodiversity_score=80,
+        )
+        db.add(first)
+        db.commit()
+
+        db.add(
+            SiteMetric(
+                site_id=1,
+                period=date(2026, 1, 1),
+                carbon_tonnes_co2e=90,
+                biodiversity_score=81,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            db.commit()
 
 
 def test_project_analytics_returns_site_summary(client: TestClient):
