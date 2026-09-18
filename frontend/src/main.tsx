@@ -474,6 +474,8 @@ function Dashboard({
   const [darkMode, setDarkMode] = useState(true);
   const [creatingSite, setCreatingSite] = useState(false);
   const [createSiteError, setCreateSiteError] = useState<string | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [siteSearch, setSiteSearch] = useState("");
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? "dark" : "light";
@@ -481,6 +483,22 @@ function Dashboard({
 
   useEffect(() => {
     setThumbnailFailed(false);
+  }, [selectedSiteId]);
+
+  // Close analytics drawer with Escape key
+  useEffect(() => {
+    if (!selectedSiteId) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelectedSiteId(null);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [selectedSiteId]);
 
   const loadProjects = useCallback(async () => {
@@ -1099,18 +1117,21 @@ function Dashboard({
     labels: chartLabels,
     datasets: [
       {
-        label: "Carbon (tCO2e)",
+        label: "Carbon (tCO₂e)",
         data: [
           ...carbonValues,
           ...Array.from({ length: carbonForecast.length }, () => null),
         ],
-        borderColor: "#00e5a0",
-        backgroundColor: "#00e5a026",
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16,185,129,0.12)",
+        borderWidth: 2.5,
         fill: true,
         tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 5,
       },
       {
-        label: "Forecast",
+        label: "Forecast (3M)",
         data: [
           ...Array.from(
             { length: Math.max(0, visibleMetrics.length - 1) },
@@ -1121,8 +1142,10 @@ function Dashboard({
         ],
         borderColor: "#f59e0b",
         backgroundColor: "transparent",
-        borderDash: [6, 5],
-        pointRadius: 2,
+        borderDash: [7, 4],
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
         fill: false,
         tension: 0.3,
       },
@@ -1135,10 +1158,13 @@ function Dashboard({
       {
         label: "Biodiversity (/100)",
         data: biodiversityValues,
-        borderColor: "#f59e0b",
-        backgroundColor: "#f59e0b26",
+        borderColor: "#8b5cf6",
+        backgroundColor: "rgba(139,92,246,0.10)",
+        borderWidth: 2.5,
         fill: true,
         tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 5,
       },
     ],
   };
@@ -1147,7 +1173,7 @@ function Dashboard({
     labels: visibleLabels,
     datasets: [
       {
-        label: "Carbon change (tCO2e)",
+        label: "Carbon change (tCO₂e)",
         data: visibleMetrics.map((metric, index) => {
           if (index === 0) return null;
           return (
@@ -1160,7 +1186,7 @@ function Dashboard({
           const delta =
             (metric.carbon_tonnes_co2e ?? 0) -
             (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0);
-          return delta <= 0 ? "#00e5a0" : "#ef4444";
+          return delta <= 0 ? "#10b981" : "#ef4444";
         }),
         borderRadius: 5,
         barPercentage: 0.85,
@@ -1271,6 +1297,39 @@ function Dashboard({
       ],
       { padding: 72, maxZoom: 12, duration: 500 },
     );
+  }
+
+  function fitAllSites() {
+    if (!mapRef.current || sites.length === 0) return;
+
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+
+    for (const site of sites) {
+      for (const [lon, lat] of site.geometry.coordinates[0]) {
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      }
+    }
+
+    if (
+      Number.isFinite(minLon) &&
+      Number.isFinite(maxLon) &&
+      Number.isFinite(minLat) &&
+      Number.isFinite(maxLat)
+    ) {
+      mapRef.current.fitBounds(
+        [
+          [minLon, minLat],
+          [maxLon, maxLat],
+        ],
+        { padding: 72, maxZoom: 12, duration: 600 },
+      );
+    }
   }
 
   useEffect(() => {
@@ -1531,34 +1590,72 @@ function Dashboard({
 
       <section className="card projects-card">
         <h2>Projects</h2>
-        {loadingProjects ? <p>Loading projects...</p> : null}
+        {loadingProjects ? (
+          <div className="loading-indicator" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading projects…</span>
+          </div>
+        ) : null}
         {!loadingProjects && projects.length === 0 ? (
-          <p>No projects yet. Create first project.</p>
+          <div className="empty-state">
+            <p className="empty-state-title">No projects yet</p>
+            <p className="empty-state-hint">
+              Create your first project using the form above to start tracking
+              carbon and biodiversity sites.
+            </p>
+          </div>
         ) : null}
         {!loadingProjects && projects.length > 0 ? (
           <>
+            <div className="search-wrap">
+              <input
+                className="search-input"
+                type="search"
+                placeholder="Search projects…"
+                value={projectSearch}
+                onChange={(event) => setProjectSearch(event.target.value)}
+                aria-label="Search projects"
+              />
+            </div>
             <ul className="project-list">
-              {projects.map((project) => (
-                <li
-                  key={project.id}
-                  className={
-                    project.id === selectedProjectId ? "selected-item" : ""
-                  }
-                >
-                  <button
-                    className="project-item"
-                    type="button"
-                    onClick={() =>
-                      setSelectedProjectId((current) =>
-                        current === project.id ? null : project.id,
-                      )
+              {projects
+                .filter((project) =>
+                  project.name
+                    .toLowerCase()
+                    .includes(projectSearch.toLowerCase()),
+                )
+                .map((project) => (
+                  <li
+                    key={project.id}
+                    className={
+                      project.id === selectedProjectId ? "selected-item" : ""
                     }
                   >
-                    <strong>{project.name}</strong>
-                    <span>{project.description || "No description"}</span>
-                  </button>
+                    <button
+                      className="project-item"
+                      type="button"
+                      onClick={() =>
+                        setSelectedProjectId((current) =>
+                          current === project.id ? null : project.id,
+                        )
+                      }
+                    >
+                      <strong>{project.name}</strong>
+                      <span>{project.description || "No description"}</span>
+                    </button>
+                  </li>
+                ))}
+              {projects.filter((project) =>
+                project.name
+                  .toLowerCase()
+                  .includes(projectSearch.toLowerCase()),
+              ).length === 0 ? (
+                <li>
+                  <p className="search-no-results">
+                    No projects match &ldquo;{projectSearch}&rdquo;
+                  </p>
                 </li>
-              ))}
+              ) : null}
             </ul>
           </>
         ) : null}
@@ -1602,89 +1699,127 @@ function Dashboard({
           </div>
         ) : null}
 
-        {loadingSites ? <p>Loading sites...</p> : null}
+        {loadingSites ? (
+          <div className="loading-indicator" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading sites…</span>
+          </div>
+        ) : null}
         {sitesError ? <p className="error">{sitesError}</p> : null}
 
         {!loadingSites &&
         !sitesError &&
         selectedProject &&
         sites.length === 0 ? (
-          <p>No sites yet for this project.</p>
+          <div className="empty-state">
+            <p className="empty-state-title">No sites yet</p>
+            <p className="empty-state-hint">
+              Use the map or coordinate entry below to draw your first site
+              boundary for this project.
+            </p>
+          </div>
         ) : null}
 
         {!loadingSites && !sitesError && sites.length > 0 ? (
-          <ul className="site-list">
-            {sites.map((site) => {
-              const siteAnalyticsData = projectAnalytics?.sites.find(
-                (summary) => summary.site_id === site.id,
-              );
-              return (
-                <li
-                  key={site.id}
-                  className={
-                    site.id === selectedSiteId ? "selected-site-card" : ""
-                  }
-                >
-                  <button
-                    className="site-card-button"
-                    type="button"
-                    onClick={() =>
-                      selectedSiteId === site.id
-                        ? setSelectedSiteId(null)
-                        : focusSite(site)
-                    }
-                  >
-                    <div className="site-card-header">
-                      <h3>{site.name}</h3>
-                      <span className="site-card-area">
-                        {site.area_hectares.toFixed(2)} ha
-                      </span>
-                    </div>
+          <>
+            <div className="search-wrap">
+              <input
+                className="search-input"
+                type="search"
+                placeholder="Search sites…"
+                value={siteSearch}
+                onChange={(event) => setSiteSearch(event.target.value)}
+                aria-label="Search sites"
+              />
+            </div>
+            <ul className="site-list">
+              {sites
+                .filter((site) =>
+                  site.name.toLowerCase().includes(siteSearch.toLowerCase()),
+                )
+                .map((site) => {
+                  const siteAnalyticsData = projectAnalytics?.sites.find(
+                    (summary) => summary.site_id === site.id,
+                  );
+                  return (
+                    <li
+                      key={site.id}
+                      className={
+                        site.id === selectedSiteId ? "selected-site-card" : ""
+                      }
+                    >
+                      <button
+                        className="site-card-button"
+                        type="button"
+                        onClick={() =>
+                          selectedSiteId === site.id
+                            ? setSelectedSiteId(null)
+                            : focusSite(site)
+                        }
+                      >
+                        <div className="site-card-header">
+                          <h3>{site.name}</h3>
+                          <span className="site-card-area">
+                            {site.area_hectares.toFixed(2)} ha
+                          </span>
+                        </div>
 
-                    <div className="site-card-metrics">
-                      <div className="site-card-metric">
-                        <span className="metric-label">Carbon</span>
-                        <span className="metric-value">
-                          {siteAnalyticsData?.latest_carbon_tonnes_co2e !==
-                            null &&
-                          siteAnalyticsData?.latest_carbon_tonnes_co2e !==
-                            undefined
-                            ? `${siteAnalyticsData.latest_carbon_tonnes_co2e.toFixed(1)} t`
-                            : "—"}
-                        </span>
-                      </div>
-                      <div className="site-card-metric">
-                        <span className="metric-label">Biodiversity</span>
-                        <span className="metric-value">
-                          {siteAnalyticsData?.latest_biodiversity_score !==
-                            null &&
-                          siteAnalyticsData?.latest_biodiversity_score !==
-                            undefined
-                            ? siteAnalyticsData.latest_biodiversity_score.toFixed(
-                                2,
-                              )
-                            : "—"}
-                        </span>
-                      </div>
-                    </div>
+                        <div className="site-card-metrics">
+                          <div className="site-card-metric">
+                            <span className="metric-label">Carbon</span>
+                            <span className="metric-value">
+                              {siteAnalyticsData?.latest_carbon_tonnes_co2e !==
+                                null &&
+                              siteAnalyticsData?.latest_carbon_tonnes_co2e !==
+                                undefined
+                                ? `${siteAnalyticsData.latest_carbon_tonnes_co2e.toFixed(1)} t`
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="site-card-metric">
+                            <span className="metric-label">Biodiversity</span>
+                            <span className="metric-value">
+                              {siteAnalyticsData?.latest_biodiversity_score !==
+                                null &&
+                              siteAnalyticsData?.latest_biodiversity_score !==
+                                undefined
+                                ? siteAnalyticsData.latest_biodiversity_score.toFixed(
+                                    2,
+                                  )
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
 
-                    {siteAnalyticsData?.carbon_history &&
-                    siteAnalyticsData.carbon_history.length > 0 ? (
-                      <div className="site-trend">
-                        <Sparkline values={siteAnalyticsData.carbon_history} />
-                      </div>
-                    ) : null}
+                        {siteAnalyticsData?.carbon_history &&
+                        siteAnalyticsData.carbon_history.length > 0 ? (
+                          <div className="site-trend">
+                            <Sparkline
+                              values={siteAnalyticsData.carbon_history}
+                            />
+                          </div>
+                        ) : null}
 
-                    <div className="site-card-cta">
-                      <span className="site-analytics-cta">
-                        View analytics →
-                      </span>
-                    </div>
-                  </button>
+                        <div className="site-card-cta">
+                          <span className="site-analytics-cta">
+                            View analytics →
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              {sites.filter((site) =>
+                site.name.toLowerCase().includes(siteSearch.toLowerCase()),
+              ).length === 0 ? (
+                <li>
+                  <p className="search-no-results">
+                    No sites match &ldquo;{siteSearch}&rdquo;
+                  </p>
                 </li>
-              );
-            })}
-          </ul>
+              ) : null}
+            </ul>
+          </>
         ) : null}
       </section>
 
@@ -1779,6 +1914,15 @@ function Dashboard({
                 title="Clear drawn polygon"
               >
                 Clear
+              </button>
+              <button
+                type="button"
+                className="mode-button"
+                onClick={fitAllSites}
+                disabled={sites.length === 0}
+                title="Fit map to all sites"
+              >
+                Fit All
               </button>
             </div>
             {drawStats ? (
@@ -1968,10 +2112,24 @@ function Dashboard({
           ) : null}
         </div>
 
-        {analyticsLoading ? <p>Loading analytics...</p> : null}
+        {analyticsLoading ? (
+          <div
+            className="loading-indicator loading-indicator--lg"
+            aria-live="polite"
+          >
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading analytics…</span>
+          </div>
+        ) : null}
         {analyticsError ? <p className="error">{analyticsError}</p> : null}
         {!analyticsLoading && !analyticsError && !selectedSiteId ? (
-          <p className="analytics-empty">Select a site from the list or map.</p>
+          <div className="analytics-empty">
+            <p className="empty-state-title">No site selected</p>
+            <p className="empty-state-hint">
+              Click a site card or a polygon on the map to open its analytics
+              panel.
+            </p>
+          </div>
         ) : null}
         {!analyticsLoading &&
         !analyticsError &&
@@ -1979,7 +2137,11 @@ function Dashboard({
         siteAnalytics &&
         siteAnalytics.metrics.length === 0 ? (
           <div className="analytics-empty">
-            <p>No metrics available for this site yet.</p>
+            <p className="empty-state-title">No metrics yet</p>
+            <p className="empty-state-hint">
+              This site has no performance data. Seed demo metrics to explore
+              the carbon and biodiversity charts.
+            </p>
             {seedMessage ? <small>{seedMessage}</small> : null}
           </div>
         ) : null}
