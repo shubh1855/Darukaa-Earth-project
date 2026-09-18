@@ -13,7 +13,7 @@ The MVP solves three workflows:
 2. **Manage projects** — create projects and view only owned projects.
 3. **Map and measure sites** — draw site polygons, calculate area, and review carbon and biodiversity metrics.
 
-The product specification is in [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md). Implementation conventions are in [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md). Delivery progress and task checkboxes are in [`docs/PROGRESS.md`](docs/PROGRESS.md).
+The product specification is in [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md). Implementation conventions are in [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md). Deployment and release checks are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Delivery progress and task checkboxes are in [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## Current progress
 
