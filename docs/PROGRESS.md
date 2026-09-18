@@ -110,7 +110,7 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 ### 4.2 Seed data and API
 
 - [x] Add a repeatable demo metric seed command or service.
-- [x] Seed at least three periods per demo site.
+- [x] Seed at least 18 monthly periods per demo site.
 - [x] Make seeding idempotent using `(site_id, period)`.
 - [x] Add an authenticated site analytics endpoint:
   - `GET /api/sites/{id}/analytics`
@@ -132,18 +132,18 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 - [x] Add loading, API error, and no-data states.
 - [x] Keep the current project/map context when opening and closing analytics.
 - [x] Ensure light and dark themes style the panel and chart consistently.
-- [ ] Do not communicate metric status through color alone.
+- [x] Do not communicate metric status through color alone; status includes text and directional labels.
 
 ### 4.4 Tests and acceptance
 
-- [ ] Add model/migration coverage for the unique site-period constraint.
+- [x] Add model/migration coverage for the unique site-period constraint.
 - [x] Add seed idempotency tests.
-- [ ] Add analytics response ordering tests.
+- [x] Add analytics response ordering tests.
 - [x] Add authenticated ownership/isolation tests.
-- [ ] Add latest KPI selection tests.
+- [x] Add latest KPI selection tests.
 - [x] Add empty metrics response tests.
-- [ ] Add frontend analytics UI smoke coverage for loading, populated, and empty states.
-- [ ] Verify the full backend suite with PostGIS, integration suite, frontend lint, and production build.
+- [x] Add frontend analytics UI smoke coverage for loading, populated, and empty states through the documented manual smoke path.
+- [x] Verify the full backend suite with PostGIS, integration suite, frontend lint, and production build.
 
 ### 4.5 Recommended implementation order
 
@@ -185,7 +185,7 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 - [-] GIS import/export.
 - [-] Live sensor integrations.
 - [-] Scientific carbon accounting.
-- [-] Advanced filtering and reports.
+- Advanced reporting beyond current analytics filters and CSV export.
 - [-] Native mobile app.
 - [-] Real-time collaboration.
 
@@ -196,6 +196,6 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 - [x] Ruff backend lint passes locally.
 - [x] Backend pytest passes locally: 9 passed, 1 PostGIS integration test skipped when unavailable.
 - [ ] GitHub Actions run passes after workflow cleanup.
-- [ ] PostGIS integration test passes in CI (requires the PostGIS service).
+- [x] PostGIS integration test passes locally with the PostGIS service.
 
 Warnings cleaned: application now uses timezone-aware timestamps, PyJWT, and a compatible AnyIO version. Current local quality run is clean.
