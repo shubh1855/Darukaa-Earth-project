@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { deltaLabel, deltaTone, calculateAreaFromRing } from "../utils/helpers";
+import {
+  deltaLabel,
+  deltaTone,
+  calculateAreaFromRing,
+  getSitePoint,
+  getThumbnailPolygonPoints,
+} from "../utils/helpers";
+import type { Site, PolygonGeometry } from "../types/index";
 
 describe("Helper Functions", () => {
   describe("deltaLabel", () => {
@@ -115,6 +122,87 @@ describe("Helper Functions", () => {
       expect(calculateAreaFromRing(clockwise)).toBe(
         calculateAreaFromRing(counterClockwise),
       );
+    });
+  });
+
+  describe("getSitePoint", () => {
+    function makeSite(coordinates: number[][][]): Site {
+      return {
+        id: 1,
+        project_id: 1,
+        name: "Test",
+        geometry: { type: "Polygon", coordinates } as PolygonGeometry,
+        area_hectares: 10,
+        created_at: "2024-01-01",
+      };
+    }
+
+    it("returns centroid of a simple polygon ring", () => {
+      const site = makeSite([
+        [
+          [0, 0],
+          [2, 0],
+          [2, 2],
+          [0, 2],
+          [0, 0],
+        ],
+      ]);
+      const [lon, lat] = getSitePoint(site);
+      expect(lon).toBe(1);
+      expect(lat).toBe(1);
+    });
+
+    it("returns [0, 0] for empty coordinates", () => {
+      const site = makeSite([]);
+      expect(getSitePoint(site)).toEqual([0, 0]);
+    });
+
+    it("returns [0, 0] for empty ring", () => {
+      const site = makeSite([[]]);
+      expect(getSitePoint(site)).toEqual([0, 0]);
+    });
+
+    it("handles single-point ring", () => {
+      const site = makeSite([[[5, 10]]]);
+      const [lon, lat] = getSitePoint(site);
+      expect(lon).toBe(5);
+      expect(lat).toBe(10);
+    });
+  });
+
+  describe("getThumbnailPolygonPoints", () => {
+    it("maps polygon to SVG coordinates", () => {
+      const geometry: PolygonGeometry = {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0],
+          ],
+        ],
+      };
+      const result = getThumbnailPolygonPoints(geometry);
+      // Should produce space-separated x,y pairs
+      const pairs = result.split(" ");
+      expect(pairs.length).toBe(5);
+      // Each pair should be "x,y" format
+      for (const pair of pairs) {
+        const [x, y] = pair.split(",").map(Number);
+        expect(Number.isFinite(x)).toBe(true);
+        expect(Number.isFinite(y)).toBe(true);
+      }
+    });
+
+    it("handles empty coordinates gracefully", () => {
+      const geometry: PolygonGeometry = {
+        type: "Polygon",
+        coordinates: [],
+      };
+      const result = getThumbnailPolygonPoints(geometry);
+      expect(result).toBe("");
     });
   });
 });
