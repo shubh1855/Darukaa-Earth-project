@@ -981,11 +981,6 @@ function Dashboard({
     }
   }
 
-  const projectCountLabel = useMemo(
-    () => `${projects.length} project${projects.length === 1 ? "" : "s"}`,
-    [projects.length],
-  );
-
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
@@ -1456,9 +1451,19 @@ function Dashboard({
         </button>
       </aside>
       <header>
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <h1>Darukaa.Earth</h1>
-          <p>{projectCountLabel}</p>
+          {selectedProject ? (
+            <span
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.9rem",
+                fontWeight: 500,
+              }}
+            >
+              / {selectedProject.name}
+            </span>
+          ) : null}
         </div>
         <div className="header-actions">
           <button className="link" onClick={onLogout}>
@@ -1466,6 +1471,35 @@ function Dashboard({
           </button>
         </div>
       </header>
+
+      {projectAnalytics ? (
+        <section className="project-summary-strip">
+          <div className="summary-stat">
+            <strong>{projectAnalytics.total_area_hectares.toFixed(1)}</strong>
+            <span>Total area (ha)</span>
+          </div>
+          <div className="summary-stat">
+            <strong>
+              {projectAnalytics.total_latest_carbon_tonnes_co2e !== null
+                ? projectAnalytics.total_latest_carbon_tonnes_co2e.toFixed(1)
+                : "—"}
+            </strong>
+            <span>Latest carbon (tCO₂e)</span>
+          </div>
+          <div className="summary-stat">
+            <strong>
+              {projectAnalytics.average_latest_biodiversity_score !== null
+                ? projectAnalytics.average_latest_biodiversity_score.toFixed(2)
+                : "—"}
+            </strong>
+            <span>Avg biodiversity</span>
+          </div>
+          <div className="summary-stat">
+            <strong>{projectAnalytics.sites_with_metrics}</strong>
+            <span>Sites with data</span>
+          </div>
+        </section>
+      ) : null}
 
       <section className="card project-create-card">
         <h2>Create project</h2>
@@ -1580,37 +1614,76 @@ function Dashboard({
 
         {!loadingSites && !sitesError && sites.length > 0 ? (
           <ul className="site-list">
-            {sites.map((site) => (
-              <li
-                key={site.id}
-                className={site.id === selectedSiteId ? "selected-item" : ""}
-              >
-                <button
-                  className="site-item"
-                  type="button"
-                  onClick={() =>
-                    selectedSiteId === site.id
-                      ? setSelectedSiteId(null)
-                      : focusSite(site)
+            {sites.map((site) => {
+              const siteAnalyticsData = projectAnalytics?.sites.find(
+                (summary) => summary.site_id === site.id,
+              );
+              return (
+                <li
+                  key={site.id}
+                  className={
+                    site.id === selectedSiteId ? "selected-site-card" : ""
                   }
                 >
-                  <strong>{site.name}</strong>
-                  <span>Area: {site.area_hectares.toFixed(2)} ha</span>
-                  <span className="site-analytics-cta">View analytics →</span>
-                  {projectAnalytics ? (
-                    <span className="site-trend">
-                      <Sparkline
-                        values={
-                          projectAnalytics.sites.find(
-                            (summary) => summary.site_id === site.id,
-                          )?.carbon_history ?? []
-                        }
-                      />
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
+                  <button
+                    className="site-card-button"
+                    type="button"
+                    onClick={() =>
+                      selectedSiteId === site.id
+                        ? setSelectedSiteId(null)
+                        : focusSite(site)
+                    }
+                  >
+                    <div className="site-card-header">
+                      <h3>{site.name}</h3>
+                      <span className="site-card-area">
+                        {site.area_hectares.toFixed(2)} ha
+                      </span>
+                    </div>
+
+                    <div className="site-card-metrics">
+                      <div className="site-card-metric">
+                        <span className="metric-label">Carbon</span>
+                        <span className="metric-value">
+                          {siteAnalyticsData?.latest_carbon_tonnes_co2e !==
+                            null &&
+                          siteAnalyticsData?.latest_carbon_tonnes_co2e !==
+                            undefined
+                            ? `${siteAnalyticsData.latest_carbon_tonnes_co2e.toFixed(1)} t`
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="site-card-metric">
+                        <span className="metric-label">Biodiversity</span>
+                        <span className="metric-value">
+                          {siteAnalyticsData?.latest_biodiversity_score !==
+                            null &&
+                          siteAnalyticsData?.latest_biodiversity_score !==
+                            undefined
+                            ? siteAnalyticsData.latest_biodiversity_score.toFixed(
+                                2,
+                              )
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {siteAnalyticsData?.carbon_history &&
+                    siteAnalyticsData.carbon_history.length > 0 ? (
+                      <div className="site-trend">
+                        <Sparkline values={siteAnalyticsData.carbon_history} />
+                      </div>
+                    ) : null}
+
+                    <div className="site-card-cta">
+                      <span className="site-analytics-cta">
+                        View analytics →
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </section>
