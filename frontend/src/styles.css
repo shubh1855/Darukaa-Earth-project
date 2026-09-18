@@ -161,10 +161,6 @@ h3 {
 }
 
 .dashboard-layout > header {
-  grid-column: 1 / -1;
-}
-
-.dashboard-layout > header {
   position: sticky;
   top: 0;
   z-index: 15;
@@ -448,8 +444,7 @@ select:focus {
   margin: 1rem 0 0;
 }
 
-.project-list li,
-.site-list li {
+.project-list li {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.72rem;
@@ -461,6 +456,7 @@ select:focus {
 
 .site-list li {
   border: 1px solid var(--border);
+  border-radius: 6px;
   padding: 0;
   background: var(--surface);
   transition: all 180ms ease;
