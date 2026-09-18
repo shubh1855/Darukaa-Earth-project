@@ -178,6 +178,11 @@ h2 {
   grid-row: 4;
 }
 
+.analytics-card {
+  grid-column: 1 / -1;
+  grid-row: 5;
+}
+
 .auth-card {
   width: min(460px, 100%);
 }
@@ -412,6 +417,131 @@ small {
   stroke-width: 1.8;
 }
 
+.analytics-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.analytics-heading p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+}
+
+.analytics-empty {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-muted);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.kpi-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.kpi-card small,
+.kpi-card span {
+  color: var(--muted);
+}
+
+.kpi-card strong {
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  color: var(--primary-strong);
+}
+
+.kpi-card em {
+  color: var(--primary-strong);
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.analytics-period {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 1.1rem;
+}
+
+.chart-toolbar span {
+  margin-right: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.chart-toolbar button {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.analytics-chart {
+  position: relative;
+  height: 320px;
+  margin-top: 1rem;
+}
+
+.analytics-table-wrap {
+  overflow-x: auto;
+  margin-top: 1.25rem;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.analytics-table caption {
+  margin-bottom: 0.55rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.analytics-table th,
+.analytics-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.analytics-table thead th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.analytics-table tbody th {
+  font-weight: 600;
+}
+
 @media (max-width: 700px) {
   .dashboard-layout {
     grid-template-columns: 1fr;
@@ -424,7 +554,8 @@ small {
   .dashboard-layout > .project-create-card,
   .dashboard-layout > .projects-card,
   .dashboard-layout > .sites-card,
-  .dashboard-layout > .create-site-card {
+  .dashboard-layout > .create-site-card,
+  .dashboard-layout > .analytics-card {
     grid-column: 1;
     grid-row: auto;
   }

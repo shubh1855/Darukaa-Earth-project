@@ -9,6 +9,17 @@ import {
 } from "react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  CategoryScale,
+  Chart as ChartJS,
+  Filler,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 import Map, { Layer, MapRef, Source } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import FreehandMode from "mapbox-gl-draw-freehand-mode";
@@ -16,6 +27,16 @@ import FreehandMode from "mapbox-gl-draw-freehand-mode";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import "./styles.css";
+
+ChartJS.register(
+  CategoryScale,
+  Filler,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
+);
 
 type TokenResponse = { access_token: string; token_type: string };
 type Project = {
@@ -37,6 +58,21 @@ type Site = {
   geometry: PolygonGeometry;
   area_hectares: number;
   created_at: string;
+};
+
+type SiteMetric = {
+  period: string;
+  carbon_tonnes_co2e: number | null;
+  biodiversity_score: number | null;
+};
+
+type SiteAnalytics = {
+  site_id: number;
+  site_name: string;
+  area_hectares: number;
+  latest_carbon_tonnes_co2e: number | null;
+  latest_biodiversity_score: number | null;
+  metrics: SiteMetric[];
 };
 
 type SitePointFeatureCollection = {
@@ -174,6 +210,14 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
+function trendLabel(current: number | null, previous: number | null): string {
+  if (current === null || previous === null) {
+    return "No prior period";
+  }
+  const change = current - previous;
+  return `${change >= 0 ? "+" : ""}${change.toFixed(1)} vs prior`;
+}
+
 function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -282,6 +326,14 @@ function Dashboard({
   );
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
+  const [siteAnalytics, setSiteAnalytics] = useState<SiteAnalytics | null>(
+    null,
+  );
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [analyticsChartMode, setAnalyticsChartMode] = useState<
+    "all" | "carbon" | "biodiversity"
+  >("all");
   const mapRef = useRef<MapRef | null>(null);
   const siteNameInputRef = useRef<HTMLInputElement | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -352,6 +404,8 @@ function Dashboard({
 
   useEffect(() => {
     setSelectedSiteId(null);
+    setSiteAnalytics(null);
+    setAnalyticsError(null);
     setDrawStats(null);
     setHoverSiteInfo(null);
     setSiteGeometryInput("");
@@ -388,6 +442,40 @@ function Dashboard({
   useEffect(() => {
     void loadSites();
   }, [loadSites]);
+
+  useEffect(() => {
+    if (!selectedSiteId) {
+      setSiteAnalytics(null);
+      setAnalyticsError(null);
+      setAnalyticsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAnalyticsLoading(true);
+    setAnalyticsError(null);
+    void request<SiteAnalytics>(`/sites/${selectedSiteId}/analytics`, {}, token)
+      .then((data) => {
+        if (!cancelled) {
+          setSiteAnalytics(data);
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setSiteAnalytics(null);
+          setAnalyticsError((requestError as Error).message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAnalyticsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSiteId, token]);
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -800,6 +888,54 @@ function Dashboard({
   );
 
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
+
+  const analyticsChartData = useMemo(() => {
+    if (!siteAnalytics) {
+      return null;
+    }
+
+    const datasets = [];
+    if (analyticsChartMode !== "biodiversity") {
+      datasets.push({
+        label: "Carbon (tonnes CO2e)",
+        data: siteAnalytics.metrics.map((metric) => metric.carbon_tonnes_co2e),
+        borderColor: "#168a61",
+        backgroundColor: "#168a6126",
+        fill: true,
+        tension: 0.3,
+      });
+    }
+    if (analyticsChartMode !== "carbon") {
+      datasets.push({
+        label: "Biodiversity score",
+        data: siteAnalytics.metrics.map((metric) => metric.biodiversity_score),
+        borderColor: "#c58b27",
+        backgroundColor: "#c58b2726",
+        fill: false,
+        tension: 0.3,
+        yAxisID: "biodiversity",
+      });
+    }
+
+    return {
+      labels: siteAnalytics.metrics.map((metric) => metric.period),
+      datasets,
+    };
+  }, [analyticsChartMode, siteAnalytics]);
+
+  const latestMetric =
+    siteAnalytics?.metrics[siteAnalytics.metrics.length - 1] ?? null;
+  const previousMetric =
+    siteAnalytics?.metrics[siteAnalytics.metrics.length - 2] ?? null;
+  const latestPeriod = latestMetric?.period ?? null;
+  const carbonTrend = trendLabel(
+    latestMetric?.carbon_tonnes_co2e ?? null,
+    previousMetric?.carbon_tonnes_co2e ?? null,
+  );
+  const biodiversityTrend = trendLabel(
+    latestMetric?.biodiversity_score ?? null,
+    previousMetric?.biodiversity_score ?? null,
+  );
 
   function focusSite(site: Site) {
     setSelectedSiteId(site.id);
@@ -1301,6 +1437,148 @@ function Dashboard({
           </button>
         </form>
         {createSiteError ? <p className="error">{createSiteError}</p> : null}
+      </section>
+
+      <section className="card analytics-card">
+        <div className="analytics-heading">
+          <div>
+            <h2>Site analytics</h2>
+            <p>
+              {siteAnalytics
+                ? `${siteAnalytics.site_name} · ${siteAnalytics.area_hectares.toFixed(2)} ha`
+                : "Select a site to view performance"}
+            </p>
+          </div>
+          {siteAnalytics ? (
+            <button
+              className="mode-button"
+              type="button"
+              onClick={() => setSelectedSiteId(null)}
+            >
+              Close
+            </button>
+          ) : null}
+        </div>
+
+        {analyticsLoading ? <p>Loading analytics...</p> : null}
+        {analyticsError ? <p className="error">{analyticsError}</p> : null}
+        {!analyticsLoading && !analyticsError && !selectedSiteId ? (
+          <p className="analytics-empty">Select a site from the list or map.</p>
+        ) : null}
+        {!analyticsLoading &&
+        !analyticsError &&
+        selectedSiteId &&
+        siteAnalytics &&
+        siteAnalytics.metrics.length === 0 ? (
+          <p className="analytics-empty">
+            No metrics available for this site yet. Seed demo metrics to view
+            trends.
+          </p>
+        ) : null}
+        {!analyticsLoading &&
+        !analyticsError &&
+        siteAnalytics &&
+        siteAnalytics.metrics.length > 0 ? (
+          <>
+            <p className="analytics-period">
+              Latest period: {latestPeriod ?? "No period"}. Demo indicators
+              only; not scientific measurements.
+            </p>
+            <div className="kpi-grid">
+              <div
+                className="kpi-card"
+                title="Estimated carbon indicator for latest period."
+              >
+                <small>Latest carbon ⓘ</small>
+                <strong>
+                  {siteAnalytics.latest_carbon_tonnes_co2e?.toFixed(2) ?? "—"}
+                </strong>
+                <span>tonnes CO2e</span>
+                <em className="trend-badge">{carbonTrend}</em>
+              </div>
+              <div
+                className="kpi-card"
+                title="Demo biodiversity health score from 0 to 100."
+              >
+                <small>Latest biodiversity ⓘ</small>
+                <strong>
+                  {siteAnalytics.latest_biodiversity_score?.toFixed(1) ?? "—"}
+                </strong>
+                <span>score / 100</span>
+                <em className="trend-badge">{biodiversityTrend}</em>
+              </div>
+            </div>
+            <div
+              className="chart-toolbar"
+              role="group"
+              aria-label="Chart metric"
+            >
+              <span>Trend view</span>
+              {(["all", "carbon", "biodiversity"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={
+                    analyticsChartMode === mode ? "mode-active" : "mode-button"
+                  }
+                  onClick={() => setAnalyticsChartMode(mode)}
+                >
+                  {mode === "all"
+                    ? "All metrics"
+                    : mode === "carbon"
+                      ? "Carbon"
+                      : "Biodiversity"}
+                </button>
+              ))}
+            </div>
+            {analyticsChartData ? (
+              <div className="analytics-chart">
+                <Line
+                  data={analyticsChartData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: "index", intersect: false },
+                    scales: {
+                      y: {
+                        title: { display: true, text: "Carbon tonnes CO2e" },
+                        beginAtZero: true,
+                      },
+                      biodiversity: {
+                        position: "right",
+                        min: 0,
+                        max: 100,
+                        title: { display: true, text: "Biodiversity / 100" },
+                        grid: { drawOnChartArea: false },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            ) : null}
+            <div className="analytics-table-wrap">
+              <table className="analytics-table">
+                <caption>Historical site indicators</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Period</th>
+                    <th scope="col">Carbon (t CO2e)</th>
+                    <th scope="col">Biodiversity (/100)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...siteAnalytics.metrics].reverse().map((metric) => (
+                    <tr key={metric.period}>
+                      <th scope="row">{metric.period}</th>
+                      <td>{metric.carbon_tonnes_co2e?.toFixed(2) ?? "—"}</td>
+                      <td>{metric.biodiversity_score?.toFixed(1) ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
       </section>
     </main>
   );
