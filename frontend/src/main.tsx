@@ -342,7 +342,7 @@ function Dashboard({
         reloadSiteAnalytics();
       }
     } catch {
-      // Error handling can be added if needed
+      setSeedMessage("Failed to seed metrics.");
     } finally {
       setSeedingMetrics(false);
     }
@@ -907,7 +907,9 @@ function Dashboard({
     let maxLat = -Infinity;
 
     for (const site of sites) {
-      for (const [lon, lat] of site.geometry.coordinates[0] as number[][]) {
+      const ring = site.geometry.coordinates[0];
+      if (!ring) continue;
+      for (const [lon, lat] of ring as number[][]) {
         minLon = Math.min(minLon, lon);
         maxLon = Math.max(maxLon, lon);
         minLat = Math.min(minLat, lat);
@@ -942,7 +944,9 @@ function Dashboard({
     let maxLat = -Infinity;
 
     for (const site of sites) {
-      for (const [lon, lat] of site.geometry.coordinates[0] as number[][]) {
+      const ring = site.geometry.coordinates[0];
+      if (!ring) continue;
+      for (const [lon, lat] of ring as number[][]) {
         minLon = Math.min(minLon, lon);
         maxLon = Math.max(maxLon, lon);
         minLat = Math.min(minLat, lat);
@@ -961,7 +965,7 @@ function Dashboard({
           [minLon, minLat],
           [maxLon, maxLat],
         ],
-        { padding: 48, duration: 500 },
+        { padding: 48, maxZoom: 12, duration: 500 },
       );
     }
   }, [sites]);
@@ -1587,7 +1591,7 @@ function Dashboard({
                 rows={5}
                 spellCheck={false}
                 placeholder={
-                  "77.58, 12.97\\n77.60, 12.97\\n77.60, 12.99\\n77.58, 12.99"
+                  "77.58, 12.97\n77.60, 12.97\n77.60, 12.99\n77.58, 12.99"
                 }
               />
               <small>

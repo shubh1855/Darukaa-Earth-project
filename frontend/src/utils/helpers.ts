@@ -48,7 +48,7 @@ export function getThumbnailPolygonPoints(geometry: PolygonGeometry): string {
 }
 
 export function getSitePoint(site: Site): [number, number] {
-  const ring = site.geometry.coordinates[0];
+  const ring = site.geometry.coordinates[0] ?? [];
   if (ring.length === 0) {
     return [0, 0];
   }
