@@ -1,7 +1,6 @@
 import {
   FormEvent,
   MouseEvent,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -25,11 +24,57 @@ import Map, { Layer, MapRef, Source } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import FreehandMode from "mapbox-gl-draw-freehand-mode";
 
+import { formatMonthLabel, linearForecast } from "./mockData.js";
+
+// Component imports
+import { Sparkline } from "./components/Sparkline";
+import { ThemeToggle } from "./components/ThemeToggle";
+
+// Hook imports
+import { useProjects } from "./hooks/useProjects";
+import { useSites } from "./hooks/useSites";
+import { useProjectAnalytics } from "./hooks/useProjectAnalytics";
+import { useSiteAnalytics } from "./hooks/useSiteAnalytics";
+
+// Type imports
+import type {
+  TokenResponse,
+  Project,
+  PolygonGeometry,
+  Site,
+  SiteMetric,
+  ProjectSiteAnalytics,
+  SitePointFeatureCollection,
+  SiteFeatureCollection,
+} from "./types/index";
+
+// Utility imports
+import { request } from "./utils/api";
 import {
-  ensureMockHistory,
-  formatMonthLabel,
-  linearForecast,
-} from "./mockData.js";
+  deltaLabel,
+  deltaTone,
+  getThumbnailPolygonPoints,
+  getSitePoint,
+  calculateAreaFromRing,
+} from "./utils/helpers";
+import {
+  MAPBOX_TOKEN,
+  ENABLE_DEMO_SEED,
+  SAMPLE_POLYGON,
+  siteFillLayer,
+  sitePointLayer,
+  draftLineLayer,
+  draftPointLayer,
+  siteOutlineLayer,
+} from "./utils/constants";
+import {
+  carbonChartOptions,
+  biodiversityChartOptions,
+  deltaBarOptions,
+  createCarbonDataset,
+  createForecastDataset,
+  createBiodiversityDataset,
+} from "./utils/chartConfig";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
@@ -46,225 +91,10 @@ ChartJS.register(
   Tooltip,
 );
 
-type TokenResponse = { access_token: string; token_type: string };
-type Project = {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-};
-
-type PolygonGeometry = {
-  type: "Polygon";
-  coordinates: number[][][];
-};
-
-type Site = {
-  id: number;
-  project_id: number;
-  name: string;
-  geometry: PolygonGeometry;
-  area_hectares: number;
-  created_at: string;
-};
-
-type SiteMetric = {
-  period: string;
-  carbon_tonnes_co2e: number | null;
-  biodiversity_score: number | null;
-};
-
-type SiteAnalytics = {
-  site_id: number;
-  site_name: string;
-  area_hectares: number;
-  latest_carbon_tonnes_co2e: number | null;
-  latest_biodiversity_score: number | null;
-  metrics: SiteMetric[];
-};
-
-type ProjectSiteAnalytics = {
-  site_id: number;
-  site_name: string;
-  area_hectares: number;
-  latest_carbon_tonnes_co2e: number | null;
-  latest_biodiversity_score: number | null;
-  carbon_history: Array<number | null>;
-};
-
-type ProjectAnalytics = {
-  project_id: number;
-  site_count: number;
-  total_area_hectares: number;
-  total_latest_carbon_tonnes_co2e: number | null;
-  average_latest_biodiversity_score: number | null;
-  sites_with_metrics: number;
-  sites: ProjectSiteAnalytics[];
-};
-
-type SitePointFeatureCollection = {
-  type: "FeatureCollection";
-  features: Array<{
-    type: "Feature";
-    properties: {
-      siteId: number;
-      siteName: string;
-      areaHectares: number;
-    };
-    geometry: {
-      type: "Point";
-      coordinates: [number, number];
-    };
-  }>;
-};
-
-type SiteFeatureCollection = {
-  type: "FeatureCollection";
-  features: Array<{
-    type: "Feature";
-    properties: {
-      siteId: number;
-      areaHectares: number;
-    };
-    geometry: PolygonGeometry;
-  }>;
-};
-
-type ApiError = { detail?: string };
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-const ENABLE_DEMO_SEED =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_SEED === "true";
-
-const SAMPLE_POLYGON = JSON.stringify(
-  {
-    type: "Polygon",
-    coordinates: [
-      [
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-        [0.0, 0.0],
-      ],
-    ],
-  },
-  null,
-  2,
-);
-
-const siteFillLayer = {
-  id: "site-fill",
-  type: "fill",
-  paint: {
-    "fill-color": "#1d976c",
-    "fill-opacity": 0.3,
-  },
-} as const;
-
 const drawModes = {
   ...MapboxDraw.modes,
   draw_freehand: FreehandMode as unknown as MapboxDraw.DrawCustomMode,
 } as unknown as { [modeKey: string]: MapboxDraw.DrawCustomMode };
-
-const sitePointLayer = {
-  id: "site-points",
-  type: "circle",
-  paint: {
-    "circle-color": "#126149",
-    "circle-radius": 5,
-    "circle-stroke-color": "#ffffff",
-    "circle-stroke-width": 1.5,
-  },
-} as const;
-
-const draftLineLayer = {
-  id: "draft-line",
-  type: "line",
-  paint: {
-    "line-color": "#0f8a62",
-    "line-width": 2,
-    "line-dasharray": [2, 1] as number[],
-  },
-} as const;
-
-const draftPointLayer = {
-  id: "draft-points",
-  type: "circle",
-  paint: {
-    "circle-color": "#ffffff",
-    "circle-stroke-color": "#0f8a62",
-    "circle-stroke-width": 2,
-    "circle-radius": 5,
-  },
-} as const;
-
-const siteOutlineLayer = {
-  id: "site-outline",
-  type: "line",
-  paint: {
-    "line-color": "#126149",
-    "line-width": 2,
-  },
-} as const;
-
-async function request<T>(
-  path: string,
-  init: RequestInit = {},
-  token?: string,
-): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Request failed (${response.status})`;
-    try {
-      const data = (await response.json()) as ApiError;
-      if (data.detail) {
-        errorMessage = data.detail;
-      }
-    } catch {
-      // ignore non-json errors
-    }
-    throw new Error(errorMessage);
-  }
-
-  return (await response.json()) as T;
-}
-
-function deltaLabel(
-  current: number | null,
-  previous: number | null,
-  unit: string,
-): string {
-  if (current === null || previous === null) {
-    return "No prior period";
-  }
-  const delta = current - previous;
-  const percentage = previous === 0 ? 0 : (delta / previous) * 100;
-  const precision = unit.includes("/") ? 3 : 1;
-  return `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta).toFixed(precision)} ${unit} (${delta >= 0 ? "+" : ""}${percentage.toFixed(1)}% vs prior)`;
-}
-
-function deltaTone(
-  current: number | null,
-  previous: number | null,
-  favorableDirection: "increase" | "decrease",
-): string {
-  if (current === null || previous === null || current === previous) {
-    return "trend-neutral";
-  }
-  const delta = current - previous;
-  const isFavorable = favorableDirection === "increase" ? delta > 0 : delta < 0;
-  return isFavorable ? "trend-good" : "trend-bad";
-}
 
 function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -343,68 +173,6 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   );
 }
 
-function getThumbnailPolygonPoints(geometry: PolygonGeometry): string {
-  const ring = geometry.coordinates[0] ?? [];
-  const longitudes = ring.map(([longitude]) => longitude);
-  const latitudes = ring.map(([, latitude]) => latitude);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const longitudeRange = maxLongitude - minLongitude || 1;
-  const latitudeRange = maxLatitude - minLatitude || 1;
-
-  return ring
-    .map(([longitude, latitude]) => {
-      const x = 12 + ((longitude - minLongitude) / longitudeRange) * 76;
-      const y = 50 - ((latitude - minLatitude) / latitudeRange) * 40;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-function Sparkline({ values }: { values: Array<number | null> }) {
-  const points = values.filter((value): value is number => value !== null);
-  if (points.length < 2) {
-    return <span className="sparkline-empty">No trend</span>;
-  }
-
-  const minimum = Math.min(...points);
-  const maximum = Math.max(...points);
-  const range = maximum - minimum || 1;
-  const path = values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = 28 - (((value ?? minimum) - minimum) / range) * 24;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg
-      className="sparkline"
-      viewBox="0 0 100 30"
-      role="img"
-      aria-label="Carbon trend"
-    >
-      <polyline points={path} />
-    </svg>
-  );
-}
-
-function ThemeIcon({ kind }: { kind: "sun" | "moon" }) {
-  return kind === "sun" ? (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M20.5 15.2A8.5 8.5 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z" />
-    </svg>
-  );
-}
-
 function Dashboard({
   token,
   onLogout,
@@ -412,24 +180,41 @@ function Dashboard({
   token: string;
   onLogout: () => void;
 }) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Project management
+  const {
+    projects,
+    setProjects,
+    loading: loadingProjects,
+  } = useProjects(token);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(
+    null,
+  );
 
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
     null,
   );
-  const [sites, setSites] = useState<Site[]>([]);
-  const [projectAnalytics, setProjectAnalytics] =
-    useState<ProjectAnalytics | null>(null);
+
+  // Site management
+  const {
+    sites,
+    loading: loadingSites,
+    error: sitesError,
+    reload: reloadSites,
+  } = useSites(token, selectedProjectId);
+
+  // Analytics
+  const { analytics: projectAnalytics, reload: reloadProjectAnalytics } =
+    useProjectAnalytics(token, selectedProjectId);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
-  const [siteAnalytics, setSiteAnalytics] = useState<SiteAnalytics | null>(
-    null,
-  );
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const {
+    analytics: siteAnalytics,
+    loading: analyticsLoading,
+    error: analyticsError,
+    reload: reloadSiteAnalytics,
+  } = useSiteAnalytics(token, selectedSiteId);
+
   const [seedingMetrics, setSeedingMetrics] = useState(false);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [analyticsChartMode, setAnalyticsChartMode] = useState<
@@ -445,8 +230,6 @@ function Dashboard({
   const siteNameInputRef = useRef<HTMLInputElement | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
   const analyticsScrollTimerRef = useRef<number | null>(null);
-  const [loadingSites, setLoadingSites] = useState(false);
-  const [sitesError, setSitesError] = useState<string | null>(null);
   const [siteName, setSiteName] = useState("");
   const [siteGeometryInput, setSiteGeometryInput] = useState("");
   const [coordinateInput, setCoordinateInput] = useState(
@@ -501,23 +284,6 @@ function Dashboard({
     };
   }, [selectedSiteId]);
 
-  const loadProjects = useCallback(async () => {
-    setLoadingProjects(true);
-    setProjectError(null);
-    try {
-      const data = await request<Project[]>("/projects", {}, token);
-      setProjects(data);
-    } catch (requestError) {
-      setProjectError((requestError as Error).message);
-    } finally {
-      setLoadingProjects(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
-
   useEffect(() => {
     if (projects.length === 0) {
       setSelectedProjectId(null);
@@ -535,8 +301,6 @@ function Dashboard({
   useEffect(() => {
     setSelectedSiteId(null);
     setThumbnailFailed(false);
-    setSiteAnalytics(null);
-    setAnalyticsError(null);
     setDrawStats(null);
     setHoverSiteInfo(null);
     setSiteGeometryInput("");
@@ -545,90 +309,6 @@ function Dashboard({
     drawRef.current?.deleteAll();
     changeDrawMode("simple_select");
   }, [selectedProjectId]);
-
-  const loadSites = useCallback(async () => {
-    if (!selectedProjectId) {
-      setSites([]);
-      setSitesError(null);
-      return;
-    }
-
-    setLoadingSites(true);
-    setSitesError(null);
-
-    try {
-      const data = await request<Site[]>(
-        `/projects/${selectedProjectId}/sites`,
-        {},
-        token,
-      );
-      setSites(data);
-    } catch (requestError) {
-      setSitesError((requestError as Error).message);
-    } finally {
-      setLoadingSites(false);
-    }
-  }, [selectedProjectId, token]);
-
-  useEffect(() => {
-    void loadSites();
-  }, [loadSites]);
-
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setProjectAnalytics(null);
-      return;
-    }
-
-    let cancelled = false;
-    void request<ProjectAnalytics>(
-      `/projects/${selectedProjectId}/analytics`,
-      {},
-      token,
-    ).then((data) => {
-      if (!cancelled) {
-        setProjectAnalytics(data);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedProjectId, token]);
-
-  useEffect(() => {
-    if (!selectedSiteId) {
-      setSiteAnalytics(null);
-      setAnalyticsError(null);
-      setAnalyticsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setAnalyticsLoading(true);
-    setAnalyticsError(null);
-    void request<SiteAnalytics>(`/sites/${selectedSiteId}/analytics`, {}, token)
-      .then((data) => {
-        if (!cancelled) {
-          setSiteAnalytics(ensureMockHistory(data));
-        }
-      })
-      .catch((requestError) => {
-        if (!cancelled) {
-          setSiteAnalytics(null);
-          setAnalyticsError((requestError as Error).message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setAnalyticsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSiteId, token]);
 
   function handleAnalyticsScroll() {
     setAnalyticsScrolling(true);
@@ -646,7 +326,6 @@ function Dashboard({
 
     setSeedingMetrics(true);
     setSeedMessage(null);
-    setAnalyticsError(null);
     try {
       const result = await request<{ created_count: number }>(
         `/projects/${selectedProjectId}/analytics/seed`,
@@ -658,22 +337,12 @@ function Dashboard({
           ? "Demo metrics already exist."
           : `Created ${result.created_count} demo metric rows.`,
       );
-      const projectData = await request<ProjectAnalytics>(
-        `/projects/${selectedProjectId}/analytics`,
-        {},
-        token,
-      );
-      setProjectAnalytics(projectData);
+      reloadProjectAnalytics();
       if (selectedSiteId) {
-        const siteData = await request<SiteAnalytics>(
-          `/sites/${selectedSiteId}/analytics`,
-          {},
-          token,
-        );
-        setSiteAnalytics(ensureMockHistory(siteData));
+        reloadSiteAnalytics();
       }
-    } catch (requestError) {
-      setAnalyticsError((requestError as Error).message);
+    } catch {
+      // Error handling can be added if needed
     } finally {
       setSeedingMetrics(false);
     }
@@ -681,7 +350,7 @@ function Dashboard({
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setProjectError(null);
+    setCreateProjectError(null);
 
     try {
       const project = await request<Project>(
@@ -697,7 +366,7 @@ function Dashboard({
       setName("");
       setDescription("");
     } catch (requestError) {
-      setProjectError((requestError as Error).message);
+      setCreateProjectError((requestError as Error).message);
     }
   }
 
@@ -768,27 +437,12 @@ function Dashboard({
       setDrawStats(null);
       drawRef.current?.deleteAll();
       changeDrawMode("simple_select");
-      await loadSites();
+      await reloadSites();
     } catch (requestError) {
       setCreateSiteError((requestError as Error).message);
     } finally {
       setCreatingSite(false);
     }
-  }
-
-  function calculateAreaFromRing(ring: number[][]): number | null {
-    if (ring.length < 4) {
-      return null;
-    }
-
-    let area = 0;
-    for (let index = 0; index < ring.length - 1; index += 1) {
-      const [longitudeA, latitudeA] = ring[index];
-      const [longitudeB, latitudeB] = ring[index + 1];
-      area += longitudeA * latitudeB - longitudeB * latitudeA;
-    }
-
-    return Math.abs(area) * 0.5 * 12364;
   }
 
   function calculateDrawArea(feature: GeoJSON.Feature): number | null {
@@ -1004,20 +658,6 @@ function Dashboard({
     [projects, selectedProjectId],
   );
 
-  function getSitePoint(site: Site): [number, number] {
-    const ring = site.geometry.coordinates[0];
-    if (ring.length === 0) {
-      return [0, 0];
-    }
-
-    const uniqueRing = ring.length > 1 ? ring.slice(0, -1) : ring;
-    const longitude =
-      uniqueRing.reduce((sum, [value]) => sum + value, 0) / uniqueRing.length;
-    const latitude =
-      uniqueRing.reduce((sum, [, value]) => sum + value, 0) / uniqueRing.length;
-    return [longitude, latitude];
-  }
-
   const siteGeoJson = useMemo<SiteFeatureCollection>(
     () => ({
       type: "FeatureCollection",
@@ -1086,7 +726,7 @@ function Dashboard({
 
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
 
-  const visibleMetrics = useMemo(() => {
+  const visibleMetrics = useMemo<SiteMetric[]>(() => {
     if (!siteAnalytics) {
       return [];
     }
@@ -1099,7 +739,7 @@ function Dashboard({
   const carbonForecast = siteAnalytics
     ? linearForecast(siteAnalytics.metrics, 3)
     : [];
-  const visibleLabels = visibleMetrics.map((metric) =>
+  const visibleLabels = visibleMetrics.map((metric: SiteMetric) =>
     formatMonthLabel(metric.period),
   );
   const forecastLabels = carbonForecast.map((point) =>
@@ -1116,57 +756,14 @@ function Dashboard({
   const carbonChartData = {
     labels: chartLabels,
     datasets: [
-      {
-        label: "Carbon (tCO₂e)",
-        data: [
-          ...carbonValues,
-          ...Array.from({ length: carbonForecast.length }, () => null),
-        ],
-        borderColor: "#10b981",
-        backgroundColor: "rgba(16,185,129,0.12)",
-        borderWidth: 2.5,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-        pointHoverRadius: 5,
-      },
-      {
-        label: "Forecast (3M)",
-        data: [
-          ...Array.from(
-            { length: Math.max(0, visibleMetrics.length - 1) },
-            () => null,
-          ),
-          carbonValues[carbonValues.length - 1] ?? null,
-          ...carbonForecast.map((point) => point.value),
-        ],
-        borderColor: "#f59e0b",
-        backgroundColor: "transparent",
-        borderDash: [7, 4],
-        borderWidth: 2,
-        pointRadius: 3,
-        pointHoverRadius: 5,
-        fill: false,
-        tension: 0.3,
-      },
+      createCarbonDataset(carbonValues, carbonForecast.length),
+      createForecastDataset(carbonValues, carbonForecast),
     ],
   };
 
   const biodiversityChartData = {
     labels: visibleLabels,
-    datasets: [
-      {
-        label: "Biodiversity (/100)",
-        data: biodiversityValues,
-        borderColor: "#8b5cf6",
-        backgroundColor: "rgba(139,92,246,0.10)",
-        borderWidth: 2.5,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-        pointHoverRadius: 5,
-      },
-    ],
+    datasets: [createBiodiversityDataset(biodiversityValues)],
   };
 
   const deltaBarData = {
@@ -1174,20 +771,22 @@ function Dashboard({
     datasets: [
       {
         label: "Carbon change (tCO₂e)",
-        data: visibleMetrics.map((metric, index) => {
+        data: visibleMetrics.map((metric: SiteMetric, index: number) => {
           if (index === 0) return null;
           return (
             (metric.carbon_tonnes_co2e ?? 0) -
             (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0)
           );
         }),
-        backgroundColor: visibleMetrics.map((metric, index) => {
-          if (index === 0) return "transparent";
-          const delta =
-            (metric.carbon_tonnes_co2e ?? 0) -
-            (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0);
-          return delta <= 0 ? "#10b981" : "#ef4444";
-        }),
+        backgroundColor: visibleMetrics.map(
+          (metric: SiteMetric, index: number) => {
+            if (index === 0) return "transparent";
+            const delta =
+              (metric.carbon_tonnes_co2e ?? 0) -
+              (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0);
+            return delta <= 0 ? "#10b981" : "#ef4444";
+          },
+        ),
         borderRadius: 5,
         barPercentage: 0.85,
         categoryPercentage: 0.82,
@@ -1256,7 +855,7 @@ function Dashboard({
     if (!siteAnalytics) return;
     const rows = [
       ["period", "carbon_tonnes_co2e", "biodiversity_score", "carbon_delta"],
-      ...visibleMetrics.map((metric, index) => {
+      ...visibleMetrics.map((metric: SiteMetric, index: number) => {
         const previous = visibleMetrics[index - 1];
         const delta =
           index === 0 || !previous
@@ -1308,7 +907,7 @@ function Dashboard({
     let maxLat = -Infinity;
 
     for (const site of sites) {
-      for (const [lon, lat] of site.geometry.coordinates[0]) {
+      for (const [lon, lat] of site.geometry.coordinates[0] as number[][]) {
         minLon = Math.min(minLon, lon);
         maxLon = Math.max(maxLon, lon);
         minLat = Math.min(minLat, lat);
@@ -1343,7 +942,7 @@ function Dashboard({
     let maxLat = -Infinity;
 
     for (const site of sites) {
-      for (const [lon, lat] of site.geometry.coordinates[0]) {
+      for (const [lon, lat] of site.geometry.coordinates[0] as number[][]) {
         minLon = Math.min(minLon, lon);
         maxLon = Math.max(maxLon, lon);
         minLat = Math.min(minLat, lat);
@@ -1501,30 +1100,7 @@ function Dashboard({
           ) : null}
         </div>
         <div className="header-actions">
-          <aside className="theme-switcher" aria-label="Colour theme">
-            <button
-              type="button"
-              className={
-                !darkMode ? "theme-button theme-button-active" : "theme-button"
-              }
-              onClick={() => setDarkMode(false)}
-              aria-label="Use light theme"
-              title="Light theme"
-            >
-              <ThemeIcon kind="sun" />
-            </button>
-            <button
-              type="button"
-              className={
-                darkMode ? "theme-button theme-button-active" : "theme-button"
-              }
-              onClick={() => setDarkMode(true)}
-              aria-label="Use dark theme"
-              title="Dark theme"
-            >
-              <ThemeIcon kind="moon" />
-            </button>
-          </aside>
+          <ThemeToggle darkMode={darkMode} onToggle={setDarkMode} />
           <button className="link" onClick={onLogout}>
             Logout
           </button>
@@ -1585,7 +1161,9 @@ function Dashboard({
 
           <button type="submit">Add project</button>
         </form>
-        {projectError ? <p className="error">{projectError}</p> : null}
+        {createProjectError ? (
+          <p className="error">{createProjectError}</p>
+        ) : null}
       </section>
 
       <section className="card projects-card">
@@ -1739,7 +1317,8 @@ function Dashboard({
                 )
                 .map((site) => {
                   const siteAnalyticsData = projectAnalytics?.sites.find(
-                    (summary) => summary.site_id === site.id,
+                    (summary: ProjectSiteAnalytics) =>
+                      summary.site_id === site.id,
                   );
                   return (
                     <li
@@ -2294,15 +1873,7 @@ function Dashboard({
               analyticsChartMode === "carbon" ? (
                 <div className="analytics-chart chart-block">
                   <h3>Carbon trend · tCO2e</h3>
-                  <Line
-                    data={carbonChartData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      interaction: { mode: "index", intersect: false },
-                      scales: { y: { suggestedMin: 900 } },
-                    }}
-                  />
+                  <Line data={carbonChartData} options={carbonChartOptions} />
                 </div>
               ) : null}
               {analyticsChartMode === "all" ||
@@ -2311,26 +1882,14 @@ function Dashboard({
                   <h3>Biodiversity trend · /100 · historical only</h3>
                   <Line
                     data={biodiversityChartData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      interaction: { mode: "index", intersect: false },
-                      scales: { y: { suggestedMin: 72, max: 100 } },
-                    }}
+                    options={biodiversityChartOptions}
                   />
                 </div>
               ) : null}
             </div>
             <div className="analytics-chart delta-chart chart-block">
               <h3>Month-over-month carbon change</h3>
-              <Bar
-                data={deltaBarData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  scales: { y: { beginAtZero: true } },
-                }}
-              />
+              <Bar data={deltaBarData} options={deltaBarOptions} />
             </div>
           </>
         ) : null}
