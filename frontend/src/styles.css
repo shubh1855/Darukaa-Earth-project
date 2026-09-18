@@ -178,6 +178,7 @@ h3 {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+  border-radius: 0 0 12px 12px;
 }
 
 .dashboard-layout > header > div:first-child {
@@ -461,20 +462,18 @@ select:focus {
 .site-list li {
   border: 1px solid var(--border);
   padding: 0;
-  background: #ffffff;
+  background: var(--surface);
   transition: all 180ms ease;
 }
 
 .site-list li:hover {
   border-color: var(--primary);
-  border-width: 2px;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .selected-site-card {
-  border-color: var(--primary-strong) !important;
-  border-width: 3px !important;
+  border: 3px solid var(--primary-strong) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent) !important;
 }
 
@@ -497,9 +496,10 @@ select:focus {
   cursor: pointer;
 }
 
-.site-card-button:hover {
+.site-card-button:hover:not(:disabled) {
   background: transparent;
   border: none;
+  border-color: transparent;
   transform: none;
 }
 
@@ -664,6 +664,18 @@ small {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--on-primary);
+}
+
+.mode-button:hover:not(:disabled) {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  transform: none;
+}
+
+.mode-active:hover:not(:disabled) {
+  background: var(--primary-strong);
+  border-color: var(--primary-strong);
+  transform: none;
 }
 
 .map-wrap {
