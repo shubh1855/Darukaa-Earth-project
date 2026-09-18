@@ -1426,30 +1426,6 @@ function Dashboard({
       className={`dashboard-layout ${darkMode ? "theme-dark" : ""}`}
       onClick={handleDashboardClick}
     >
-      <aside className="theme-switcher" aria-label="Colour theme">
-        <button
-          type="button"
-          className={
-            !darkMode ? "theme-button theme-button-active" : "theme-button"
-          }
-          onClick={() => setDarkMode(false)}
-          aria-label="Use light theme"
-          title="Light theme"
-        >
-          <ThemeIcon kind="sun" />
-        </button>
-        <button
-          type="button"
-          className={
-            darkMode ? "theme-button theme-button-active" : "theme-button"
-          }
-          onClick={() => setDarkMode(true)}
-          aria-label="Use dark theme"
-          title="Dark theme"
-        >
-          <ThemeIcon kind="moon" />
-        </button>
-      </aside>
       <header>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <h1>Darukaa.Earth</h1>
@@ -1466,6 +1442,30 @@ function Dashboard({
           ) : null}
         </div>
         <div className="header-actions">
+          <aside className="theme-switcher" aria-label="Colour theme">
+            <button
+              type="button"
+              className={
+                !darkMode ? "theme-button theme-button-active" : "theme-button"
+              }
+              onClick={() => setDarkMode(false)}
+              aria-label="Use light theme"
+              title="Light theme"
+            >
+              <ThemeIcon kind="sun" />
+            </button>
+            <button
+              type="button"
+              className={
+                darkMode ? "theme-button theme-button-active" : "theme-button"
+              }
+              onClick={() => setDarkMode(true)}
+              aria-label="Use dark theme"
+              title="Dark theme"
+            >
+              <ThemeIcon kind="moon" />
+            </button>
+          </aside>
           <button className="link" onClick={onLogout}>
             Logout
           </button>
@@ -1762,6 +1762,23 @@ function Dashboard({
                 onClick={() => startDrawMode("draw_freehand")}
               >
                 Freehand
+              </button>
+              <button
+                type="button"
+                className="mode-button"
+                onClick={() => {
+                  drawRef.current?.deleteAll();
+                  changeDrawMode("simple_select");
+                  setDrawTool(null);
+                  setDraftPoints([]);
+                  setSiteGeometryInput("");
+                  setDrawStats(null);
+                  setCreateSiteError(null);
+                }}
+                disabled={!drawTool && siteGeometryInput === ""}
+                title="Clear drawn polygon"
+              >
+                Clear
               </button>
             </div>
             {drawStats ? (

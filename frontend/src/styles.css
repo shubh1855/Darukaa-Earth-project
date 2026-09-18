@@ -180,9 +180,24 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
+.dashboard-layout > header > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.dashboard-layout > header > div:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dashboard-layout > header h1 {
   font-size: 1.35rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .header-actions {
@@ -704,10 +719,7 @@ small {
 }
 
 .theme-switcher {
-  position: absolute;
-  z-index: 10;
-  top: 1rem;
-  right: clamp(0.8rem, 2vw, 1.5rem);
+  position: relative;
   display: flex;
   gap: 0.4rem;
   padding: 0.4rem;
