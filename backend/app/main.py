@@ -10,14 +10,16 @@ from sqlalchemy.orm import Session
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import settings
 from .database import Base, engine, get_db
-from .models import Project, Site, User
+from .models import Project, Site, SiteMetric, User
 from .schemas import (
     AuthRequest,
     ProjectCreateRequest,
     ProjectResponse,
+    SiteAnalyticsResponse,
     SiteCreateRequest,
     SiteDetailResponse,
     SiteListResponse,
+    SiteMetricResponse,
     TokenResponse,
     UserResponse,
 )
@@ -177,6 +179,41 @@ def create_site_for_project(
     db.refresh(site)
 
     return _to_site_response(site)
+
+
+@app.get("/api/sites/{id}/analytics", response_model=SiteAnalyticsResponse)
+def get_site_analytics(
+    id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    site = db.scalar(select(Site).join(Project).where(Site.id == id, Project.owner_id == user.id))
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    metrics = list(
+        db.scalars(
+            select(SiteMetric)
+            .where(SiteMetric.site_id == site.id)
+            .order_by(SiteMetric.period.asc())
+        )
+    )
+    latest = metrics[-1] if metrics else None
+    return SiteAnalyticsResponse(
+        site_id=site.id,
+        site_name=site.name,
+        area_hectares=site.area_hectares,
+        latest_carbon_tonnes_co2e=latest.carbon_tonnes_co2e if latest else None,
+        latest_biodiversity_score=latest.biodiversity_score if latest else None,
+        metrics=[
+            SiteMetricResponse(
+                period=metric.period,
+                carbon_tonnes_co2e=metric.carbon_tonnes_co2e,
+                biodiversity_score=metric.biodiversity_score,
+            )
+            for metric in metrics
+        ],
+    )
 
 
 @app.get("/api/sites/{id}", response_model=SiteDetailResponse)
