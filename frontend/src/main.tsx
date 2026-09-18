@@ -1836,6 +1836,16 @@ function Dashboard({
                 Export CSV
               </button>
             ) : null}
+            {ENABLE_DEMO_SEED && selectedSite ? (
+              <button
+                className="mode-button"
+                type="button"
+                onClick={() => void seedProjectMetrics()}
+                disabled={seedingMetrics}
+              >
+                {seedingMetrics ? "Seeding metrics..." : "Seed demo metrics"}
+              </button>
+            ) : null}
             {siteAnalytics ? (
               <button
                 className="mode-button"
@@ -1845,6 +1855,7 @@ function Dashboard({
                 Close
               </button>
             ) : null}
+            {seedMessage ? <small>{seedMessage}</small> : null}
           </div>
           {selectedSite ? (
             siteThumbnailUrl ? (
@@ -1879,16 +1890,6 @@ function Dashboard({
         siteAnalytics.metrics.length === 0 ? (
           <div className="analytics-empty">
             <p>No metrics available for this site yet.</p>
-            {ENABLE_DEMO_SEED ? (
-              <button
-                type="button"
-                className="mode-button seed-demo-button"
-                onClick={() => void seedProjectMetrics()}
-                disabled={seedingMetrics}
-              >
-                {seedingMetrics ? "Seeding metrics..." : "Seed demo metrics"}
-              </button>
-            ) : null}
             {seedMessage ? <small>{seedMessage}</small> : null}
           </div>
         ) : null}
