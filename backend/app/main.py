@@ -10,17 +10,23 @@ from sqlalchemy.orm import Session
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import settings
 from .database import Base, engine, get_db
-from .models import Project, Site, User
+from .models import Project, Site, SiteMetric, User
 from .schemas import (
     AuthRequest,
+    ProjectAnalyticsResponse,
     ProjectCreateRequest,
     ProjectResponse,
+    ProjectSiteAnalyticsResponse,
+    SeedMetricsResponse,
+    SiteAnalyticsResponse,
     SiteCreateRequest,
     SiteDetailResponse,
     SiteListResponse,
+    SiteMetricResponse,
     TokenResponse,
     UserResponse,
 )
+from .seed_metrics import seed_demo_metrics
 
 
 @asynccontextmanager
@@ -94,6 +100,74 @@ def create_project(
     db.commit()
     db.refresh(project)
     return project
+
+
+@app.get("/api/projects/{id}/analytics", response_model=ProjectAnalyticsResponse)
+def get_project_analytics(
+    id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_owned_project_or_404(project_id=id, user_id=user.id, db=db)
+    sites = list(db.scalars(select(Site).where(Site.project_id == project.id)).all())
+    site_summaries = []
+    latest_carbon_values = []
+    latest_biodiversity_values = []
+
+    for site in sites:
+        metrics = list(
+            db.scalars(
+                select(SiteMetric)
+                .where(SiteMetric.site_id == site.id)
+                .order_by(SiteMetric.period.asc())
+            )
+        )
+        latest = metrics[-1] if metrics else None
+        if latest and latest.carbon_tonnes_co2e is not None:
+            latest_carbon_values.append(latest.carbon_tonnes_co2e)
+        if latest and latest.biodiversity_score is not None:
+            latest_biodiversity_values.append(latest.biodiversity_score)
+        site_summaries.append(
+            ProjectSiteAnalyticsResponse(
+                site_id=site.id,
+                site_name=site.name,
+                area_hectares=site.area_hectares,
+                latest_carbon_tonnes_co2e=latest.carbon_tonnes_co2e if latest else None,
+                latest_biodiversity_score=latest.biodiversity_score if latest else None,
+                carbon_history=[metric.carbon_tonnes_co2e for metric in metrics],
+            )
+        )
+
+    return ProjectAnalyticsResponse(
+        project_id=project.id,
+        site_count=len(sites),
+        total_area_hectares=sum(site.area_hectares for site in sites),
+        total_latest_carbon_tonnes_co2e=(
+            sum(latest_carbon_values) if latest_carbon_values else None
+        ),
+        average_latest_biodiversity_score=(
+            sum(latest_biodiversity_values) / len(latest_biodiversity_values)
+            if latest_biodiversity_values
+            else None
+        ),
+        sites_with_metrics=len(
+            set(summary.site_id for summary in site_summaries if summary.carbon_history)
+        ),
+        sites=site_summaries,
+    )
+
+
+@app.post(
+    "/api/projects/{id}/analytics/seed",
+    response_model=SeedMetricsResponse,
+)
+def seed_project_analytics(
+    id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_owned_project_or_404(project_id=id, user_id=user.id, db=db)
+    return SeedMetricsResponse(created_count=seed_demo_metrics(db, project_id=id))
 
 
 def _geojson_to_wkt(geometry: dict) -> WKTElement:
@@ -177,6 +251,41 @@ def create_site_for_project(
     db.refresh(site)
 
     return _to_site_response(site)
+
+
+@app.get("/api/sites/{id}/analytics", response_model=SiteAnalyticsResponse)
+def get_site_analytics(
+    id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    site = db.scalar(select(Site).join(Project).where(Site.id == id, Project.owner_id == user.id))
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    metrics = list(
+        db.scalars(
+            select(SiteMetric)
+            .where(SiteMetric.site_id == site.id)
+            .order_by(SiteMetric.period.asc())
+        )
+    )
+    latest = metrics[-1] if metrics else None
+    return SiteAnalyticsResponse(
+        site_id=site.id,
+        site_name=site.name,
+        area_hectares=site.area_hectares,
+        latest_carbon_tonnes_co2e=latest.carbon_tonnes_co2e if latest else None,
+        latest_biodiversity_score=latest.biodiversity_score if latest else None,
+        metrics=[
+            SiteMetricResponse(
+                period=metric.period,
+                carbon_tonnes_co2e=metric.carbon_tonnes_co2e,
+                biodiversity_score=metric.biodiversity_score,
+            )
+            for metric in metrics
+        ],
+    )
 
 
 @app.get("/api/sites/{id}", response_model=SiteDetailResponse)

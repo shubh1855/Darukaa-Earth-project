@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -69,3 +69,21 @@ class Site(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     project: Mapped[Project] = relationship(back_populates="sites")
+    metrics: Mapped[list["SiteMetric"]] = relationship(
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+
+
+class SiteMetric(Base):
+    __tablename__ = "site_metrics"
+    __table_args__ = (UniqueConstraint("site_id", "period", name="uq_site_metrics_site_period"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    period: Mapped[date] = mapped_column(Date, index=True)
+    carbon_tonnes_co2e: Mapped[float | None] = mapped_column(Float, nullable=True)
+    biodiversity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    site: Mapped[Site] = relationship(back_populates="metrics")

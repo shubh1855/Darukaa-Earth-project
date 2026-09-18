@@ -75,10 +75,12 @@ These features can become post-MVP roadmap items. Do not add them before MVP acc
 - Show selected site name and area.
 - Show latest carbon value in tonnes CO2e.
 - Show latest biodiversity score on a 0–100 scale.
-- Show a time-series chart for at least three periods when seed data is used.
+- Show separate carbon and biodiversity time-series charts for at least 18 seeded monthly periods.
+- Show a three-month carbon forecast and month-over-month carbon change chart.
+- Filter visible analytics by `3M`, `6M`, `12M`, or `All`.
 - Label units and time periods.
-- Show a useful empty state when metrics are unavailable.
-- Seed demo metrics for a new demo environment so reviewers can see the feature immediately.
+- Show KPI deltas, carbon intensity, CSV export, and a useful empty state.
+- Provide development-only idempotent demo metric seeding so reviewers can see the feature quickly.
 
 **Acceptance:** Selecting a site opens a detail panel or page. Chart labels, values, units, and empty state are understandable without domain knowledge.
 
@@ -224,9 +226,12 @@ Indexes:
 | `POST` | `/api/auth/login`          |   No | Verify credentials and return token  |
 | `GET`  | `/api/projects`            |  Yes | List owned projects with site counts |
 | `POST` | `/api/projects`            |  Yes | Create project                       |
-| `GET`  | `/api/projects/{id}/sites` |  Yes | List sites for owned project         |
-| `POST` | `/api/projects/{id}/sites` |  Yes | Validate and create polygon site     |
-| `GET`  | `/api/sites/{id}`          |  Yes | Return site and ordered metrics      |
+| `GET`  | `/api/projects/{id}/sites`              |  Yes | List sites for owned project              |
+| `POST` | `/api/projects/{id}/sites`              |  Yes | Validate and create polygon site         |
+| `GET`  | `/api/projects/{id}/analytics`          |  Yes | Return project analytics summary         |
+| `POST` | `/api/projects/{id}/analytics/seed`     |  Yes | Seed 18 months of demo metrics           |
+| `GET`  | `/api/sites/{id}`                       |  Yes | Return site details                       |
+| `GET`  | `/api/sites/{id}/analytics`             |  Yes | Return ordered metrics and latest KPIs   |
 
 Example site request:
 

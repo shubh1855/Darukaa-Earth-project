@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -106,3 +106,41 @@ class SiteListResponse(BaseModel):
 
 class SiteDetailResponse(SiteListResponse):
     pass
+
+
+class SiteMetricResponse(BaseModel):
+    period: date
+    carbon_tonnes_co2e: float | None
+    biodiversity_score: float | None
+
+
+class SiteAnalyticsResponse(BaseModel):
+    site_id: int
+    site_name: str
+    area_hectares: float
+    latest_carbon_tonnes_co2e: float | None
+    latest_biodiversity_score: float | None
+    metrics: list[SiteMetricResponse]
+
+
+class ProjectSiteAnalyticsResponse(BaseModel):
+    site_id: int
+    site_name: str
+    area_hectares: float
+    latest_carbon_tonnes_co2e: float | None
+    latest_biodiversity_score: float | None
+    carbon_history: list[float | None]
+
+
+class ProjectAnalyticsResponse(BaseModel):
+    project_id: int
+    site_count: int
+    total_area_hectares: float
+    total_latest_carbon_tonnes_co2e: float | None
+    average_latest_biodiversity_score: float | None
+    sites_with_metrics: int
+    sites: list[ProjectSiteAnalyticsResponse]
+
+
+class SeedMetricsResponse(BaseModel):
+    created_count: int

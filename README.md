@@ -3,7 +3,7 @@
 Darukaa.Earth is a full-stack geospatial dashboard for managing carbon and biodiversity projects.
 Administrators create projects, add geographically bounded sites, and review environmental performance over time.
 
-> Current release status: Phase 2 complete. Phase 3 site mapping is next.
+> Current release status: Phase 4 analytics complete. Phase 5 delivery remains.
 
 ## Product overview
 
@@ -20,8 +20,8 @@ The product specification is in [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md). 
 - Phase 0 — repository, tooling, local database, hooks, and CI: **complete**
 - Phase 1 — JWT authentication API and UI: **complete**
 - Phase 2 — project creation, listing, and ownership isolation: **complete**
-- Phase 3 — PostGIS sites and Mapbox polygon drawing: **next**
-- Phase 4 — seeded metrics and analytics chart: **planned**
+- Phase 3 — PostGIS sites and Mapbox polygon drawing: **complete**
+- Phase 4 — seeded metrics and interactive analytics: **complete**
 - Phase 5 — deployment, submission document, and final QA: **planned**
 
 ## Architecture
@@ -63,22 +63,26 @@ docs/                   Specification, implementation guide, and progress
 
 - React with TypeScript.
 - Vite development and production build.
-- Mapbox GL JS planned for site polygon drawing and rendering.
-- Chart.js planned for metrics visualization.
+- Mapbox GL JS renders site polygon drawing and saved boundaries.
+- Chart.js renders carbon, biodiversity, forecast, and month-over-month charts.
 - API client sends JWT bearer tokens and normalizes API errors.
 
 ## Implemented API
 
-| Method | Route                | Purpose                            |
-| ------ | -------------------- | ---------------------------------- |
-| `GET`  | `/api/health`        | Service health check               |
-| `POST` | `/api/auth/register` | Register user and return JWT       |
-| `POST` | `/api/auth/login`    | Authenticate user and return JWT   |
-| `GET`  | `/api/auth/me`       | Return authenticated user          |
-| `GET`  | `/api/projects`      | List authenticated user's projects |
-| `POST` | `/api/projects`      | Create owned project               |
-
-Planned site and analytics routes are tracked in [`docs/PROGRESS.md`](docs/PROGRESS.md).
+| Method | Route                                  | Purpose                                  |
+| ------ | -------------------------------------- | ---------------------------------------- |
+| `GET`  | `/api/health`                          | Service health check                     |
+| `POST` | `/api/auth/register`                   | Register user and return JWT             |
+| `POST` | `/api/auth/login`                      | Authenticate user and return JWT         |
+| `GET`  | `/api/auth/me`                         | Return authenticated user                |
+| `GET`  | `/api/projects`                        | List authenticated user's projects       |
+| `POST` | `/api/projects`                        | Create owned project                     |
+| `GET`  | `/api/projects/{id}/sites`              | List owned project sites                 |
+| `POST` | `/api/projects/{id}/sites`              | Create owned polygon site                |
+| `GET`  | `/api/projects/{id}/analytics`          | Return project analytics summary         |
+| `POST` | `/api/projects/{id}/analytics/seed`     | Seed 18 months of demo metrics           |
+| `GET`  | `/api/sites/{id}`                        | Return owned site details                |
+| `GET`  | `/api/sites/{id}/analytics`              | Return ordered site analytics and KPIs   |
 
 ## Local setup
 
@@ -203,6 +207,9 @@ Backend tests cover:
 - Protected current-user route.
 - Project creation and listing.
 - Cross-user project isolation.
+- Site creation and geometry validation.
+- Analytics ownership, empty state, ordering, latest KPIs, and seed idempotency.
+- Unique site-period metric constraint.
 - Health endpoint.
 
 Run:
@@ -219,6 +226,24 @@ npm run test:backend
 - CORS origins are configurable.
 - Mapbox token is a public client token and must be URL-restricted in deployment.
 - MVP stores JWT in browser local storage. Move to secure HTTP-only cookies if threat requirements increase.
+
+## Phase 4 analytics
+
+Selecting a site opens a right-side analytics drawer. The drawer shows 18 months of repeatable demo metrics when seeded, separate carbon and biodiversity trends, a three-month carbon forecast, month-over-month carbon changes, KPI deltas, carbon intensity, date filters, CSV export, and a site-boundary thumbnail. Demo metrics are indicators for review only, not scientific measurements.
+
+In development, click `Seed demo metrics` in an empty site drawer. The action is idempotent. It is enabled by Vite development mode or `VITE_ENABLE_DEMO_SEED=true`.
+
+Manual UI smoke path:
+
+1. Register or log in.
+2. Create or select a project.
+3. Select a site.
+4. Confirm empty state and seed action when metrics are absent.
+5. Seed metrics and confirm KPI cards and charts populate.
+6. Check `3M`, `6M`, `12M`, and `All` filters.
+7. Check `Carbon`, `Biodiversity`, and `All metrics` views.
+8. Export CSV and confirm visible-period rows.
+9. Close drawer with `Close` and backdrop.
 
 ## Commit and delivery rules
 
