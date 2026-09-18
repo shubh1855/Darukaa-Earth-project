@@ -163,18 +163,18 @@ Legend: `[x]` done, `[~]` in progress, `[ ]` not started, `[-]` deferred or inte
 
 ## Phase 5 — Delivery
 
-- [ ] Add production migration command.
-- [ ] Verify PostGIS deployment database.
-- [ ] Deploy API.
-- [ ] Deploy frontend.
-- [ ] Configure production CORS.
+- [x] Add production migration command.
+- [x] Verify PostGIS deployment database.
+- [x] Deploy API.
+- [x] Deploy frontend.
+- [x] Configure production CORS.
 - [ ] Configure restricted Mapbox token.
-- [ ] Add deployment health check.
-- [ ] Run reviewer smoke test.
+- [x] Add deployment health check.
+- [ ] Run reviewer smoke test against deployed API and frontend.
 - [ ] Capture screenshots or demo recording.
-- [ ] Complete README deployment notes.
+- [x] Complete README deployment notes.
 - [ ] Prepare Word submission document.
-- [ ] Add live demo URL.
+- [x] Add live demo URL.
 - [ ] Grant private repository access if needed.
 
 ## Deferred from MVP

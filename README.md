@@ -22,7 +22,16 @@ The product specification is in [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md). 
 - Phase 2 — project creation, listing, and ownership isolation: **complete**
 - Phase 3 — PostGIS sites and Mapbox polygon drawing: **complete**
 - Phase 4 — seeded metrics and interactive analytics: **complete**
-- Phase 5 — deployment, submission document, and final QA: **planned**
+- Phase 5 — deployment, submission document, and final QA: **in progress**
+
+## Deployed demo
+
+- Frontend: [darukaa-earth-project.onrender.com](https://darukaa-earth-project.onrender.com)
+- API: [darukaa-earth-api-ha0j.onrender.com](https://darukaa-earth-api-ha0j.onrender.com)
+- Health: [API health](https://darukaa-earth-api-ha0j.onrender.com/api/health)
+- Submission brief: [`docs/SUBMISSION.md`](docs/SUBMISSION.md)
+
+The deployed reviewer environment uses Render Static Site, Render Web Service, and Render Postgres with PostGIS. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for release steps.
 
 ## Architecture
 
