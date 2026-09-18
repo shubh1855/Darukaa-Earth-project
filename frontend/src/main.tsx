@@ -1,7 +1,6 @@
 import {
   FormEvent,
   MouseEvent,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -25,11 +24,57 @@ import Map, { Layer, MapRef, Source } from "react-map-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import FreehandMode from "mapbox-gl-draw-freehand-mode";
 
+import { formatMonthLabel, linearForecast } from "./mockData.js";
+
+// Component imports
+import { Sparkline } from "./components/Sparkline";
+import { ThemeToggle } from "./components/ThemeToggle";
+
+// Hook imports
+import { useProjects } from "./hooks/useProjects";
+import { useSites } from "./hooks/useSites";
+import { useProjectAnalytics } from "./hooks/useProjectAnalytics";
+import { useSiteAnalytics } from "./hooks/useSiteAnalytics";
+
+// Type imports
+import type {
+  TokenResponse,
+  Project,
+  PolygonGeometry,
+  Site,
+  SiteMetric,
+  ProjectSiteAnalytics,
+  SitePointFeatureCollection,
+  SiteFeatureCollection,
+} from "./types/index";
+
+// Utility imports
+import { request } from "./utils/api";
 import {
-  ensureMockHistory,
-  formatMonthLabel,
-  linearForecast,
-} from "./mockData.js";
+  deltaLabel,
+  deltaTone,
+  getThumbnailPolygonPoints,
+  getSitePoint,
+  calculateAreaFromRing,
+} from "./utils/helpers";
+import {
+  MAPBOX_TOKEN,
+  ENABLE_DEMO_SEED,
+  SAMPLE_POLYGON,
+  siteFillLayer,
+  sitePointLayer,
+  draftLineLayer,
+  draftPointLayer,
+  siteOutlineLayer,
+} from "./utils/constants";
+import {
+  carbonChartOptions,
+  biodiversityChartOptions,
+  deltaBarOptions,
+  createCarbonDataset,
+  createForecastDataset,
+  createBiodiversityDataset,
+} from "./utils/chartConfig";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
@@ -46,225 +91,10 @@ ChartJS.register(
   Tooltip,
 );
 
-type TokenResponse = { access_token: string; token_type: string };
-type Project = {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-};
-
-type PolygonGeometry = {
-  type: "Polygon";
-  coordinates: number[][][];
-};
-
-type Site = {
-  id: number;
-  project_id: number;
-  name: string;
-  geometry: PolygonGeometry;
-  area_hectares: number;
-  created_at: string;
-};
-
-type SiteMetric = {
-  period: string;
-  carbon_tonnes_co2e: number | null;
-  biodiversity_score: number | null;
-};
-
-type SiteAnalytics = {
-  site_id: number;
-  site_name: string;
-  area_hectares: number;
-  latest_carbon_tonnes_co2e: number | null;
-  latest_biodiversity_score: number | null;
-  metrics: SiteMetric[];
-};
-
-type ProjectSiteAnalytics = {
-  site_id: number;
-  site_name: string;
-  area_hectares: number;
-  latest_carbon_tonnes_co2e: number | null;
-  latest_biodiversity_score: number | null;
-  carbon_history: Array<number | null>;
-};
-
-type ProjectAnalytics = {
-  project_id: number;
-  site_count: number;
-  total_area_hectares: number;
-  total_latest_carbon_tonnes_co2e: number | null;
-  average_latest_biodiversity_score: number | null;
-  sites_with_metrics: number;
-  sites: ProjectSiteAnalytics[];
-};
-
-type SitePointFeatureCollection = {
-  type: "FeatureCollection";
-  features: Array<{
-    type: "Feature";
-    properties: {
-      siteId: number;
-      siteName: string;
-      areaHectares: number;
-    };
-    geometry: {
-      type: "Point";
-      coordinates: [number, number];
-    };
-  }>;
-};
-
-type SiteFeatureCollection = {
-  type: "FeatureCollection";
-  features: Array<{
-    type: "Feature";
-    properties: {
-      siteId: number;
-      areaHectares: number;
-    };
-    geometry: PolygonGeometry;
-  }>;
-};
-
-type ApiError = { detail?: string };
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-const ENABLE_DEMO_SEED =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_SEED === "true";
-
-const SAMPLE_POLYGON = JSON.stringify(
-  {
-    type: "Polygon",
-    coordinates: [
-      [
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-        [0.0, 0.0],
-      ],
-    ],
-  },
-  null,
-  2,
-);
-
-const siteFillLayer = {
-  id: "site-fill",
-  type: "fill",
-  paint: {
-    "fill-color": "#1d976c",
-    "fill-opacity": 0.3,
-  },
-} as const;
-
 const drawModes = {
   ...MapboxDraw.modes,
   draw_freehand: FreehandMode as unknown as MapboxDraw.DrawCustomMode,
 } as unknown as { [modeKey: string]: MapboxDraw.DrawCustomMode };
-
-const sitePointLayer = {
-  id: "site-points",
-  type: "circle",
-  paint: {
-    "circle-color": "#126149",
-    "circle-radius": 5,
-    "circle-stroke-color": "#ffffff",
-    "circle-stroke-width": 1.5,
-  },
-} as const;
-
-const draftLineLayer = {
-  id: "draft-line",
-  type: "line",
-  paint: {
-    "line-color": "#0f8a62",
-    "line-width": 2,
-    "line-dasharray": [2, 1] as number[],
-  },
-} as const;
-
-const draftPointLayer = {
-  id: "draft-points",
-  type: "circle",
-  paint: {
-    "circle-color": "#ffffff",
-    "circle-stroke-color": "#0f8a62",
-    "circle-stroke-width": 2,
-    "circle-radius": 5,
-  },
-} as const;
-
-const siteOutlineLayer = {
-  id: "site-outline",
-  type: "line",
-  paint: {
-    "line-color": "#126149",
-    "line-width": 2,
-  },
-} as const;
-
-async function request<T>(
-  path: string,
-  init: RequestInit = {},
-  token?: string,
-): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Request failed (${response.status})`;
-    try {
-      const data = (await response.json()) as ApiError;
-      if (data.detail) {
-        errorMessage = data.detail;
-      }
-    } catch {
-      // ignore non-json errors
-    }
-    throw new Error(errorMessage);
-  }
-
-  return (await response.json()) as T;
-}
-
-function deltaLabel(
-  current: number | null,
-  previous: number | null,
-  unit: string,
-): string {
-  if (current === null || previous === null) {
-    return "No prior period";
-  }
-  const delta = current - previous;
-  const percentage = previous === 0 ? 0 : (delta / previous) * 100;
-  const precision = unit.includes("/") ? 3 : 1;
-  return `${delta <= 0 ? "▼" : "▲"} ${Math.abs(delta).toFixed(precision)} ${unit} (${delta >= 0 ? "+" : ""}${percentage.toFixed(1)}% vs prior)`;
-}
-
-function deltaTone(
-  current: number | null,
-  previous: number | null,
-  favorableDirection: "increase" | "decrease",
-): string {
-  if (current === null || previous === null || current === previous) {
-    return "trend-neutral";
-  }
-  const delta = current - previous;
-  const isFavorable = favorableDirection === "increase" ? delta > 0 : delta < 0;
-  return isFavorable ? "trend-good" : "trend-bad";
-}
 
 function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -343,68 +173,6 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   );
 }
 
-function getThumbnailPolygonPoints(geometry: PolygonGeometry): string {
-  const ring = geometry.coordinates[0] ?? [];
-  const longitudes = ring.map(([longitude]) => longitude);
-  const latitudes = ring.map(([, latitude]) => latitude);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const longitudeRange = maxLongitude - minLongitude || 1;
-  const latitudeRange = maxLatitude - minLatitude || 1;
-
-  return ring
-    .map(([longitude, latitude]) => {
-      const x = 12 + ((longitude - minLongitude) / longitudeRange) * 76;
-      const y = 50 - ((latitude - minLatitude) / latitudeRange) * 40;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-function Sparkline({ values }: { values: Array<number | null> }) {
-  const points = values.filter((value): value is number => value !== null);
-  if (points.length < 2) {
-    return <span className="sparkline-empty">No trend</span>;
-  }
-
-  const minimum = Math.min(...points);
-  const maximum = Math.max(...points);
-  const range = maximum - minimum || 1;
-  const path = values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = 28 - (((value ?? minimum) - minimum) / range) * 24;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg
-      className="sparkline"
-      viewBox="0 0 100 30"
-      role="img"
-      aria-label="Carbon trend"
-    >
-      <polyline points={path} />
-    </svg>
-  );
-}
-
-function ThemeIcon({ kind }: { kind: "sun" | "moon" }) {
-  return kind === "sun" ? (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M20.5 15.2A8.5 8.5 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z" />
-    </svg>
-  );
-}
-
 function Dashboard({
   token,
   onLogout,
@@ -412,24 +180,41 @@ function Dashboard({
   token: string;
   onLogout: () => void;
 }) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Project management
+  const {
+    projects,
+    setProjects,
+    loading: loadingProjects,
+  } = useProjects(token);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(
+    null,
+  );
 
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
     null,
   );
-  const [sites, setSites] = useState<Site[]>([]);
-  const [projectAnalytics, setProjectAnalytics] =
-    useState<ProjectAnalytics | null>(null);
+
+  // Site management
+  const {
+    sites,
+    loading: loadingSites,
+    error: sitesError,
+    reload: reloadSites,
+  } = useSites(token, selectedProjectId);
+
+  // Analytics
+  const { analytics: projectAnalytics, reload: reloadProjectAnalytics } =
+    useProjectAnalytics(token, selectedProjectId);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
-  const [siteAnalytics, setSiteAnalytics] = useState<SiteAnalytics | null>(
-    null,
-  );
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const {
+    analytics: siteAnalytics,
+    loading: analyticsLoading,
+    error: analyticsError,
+    reload: reloadSiteAnalytics,
+  } = useSiteAnalytics(token, selectedSiteId);
+
   const [seedingMetrics, setSeedingMetrics] = useState(false);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [analyticsChartMode, setAnalyticsChartMode] = useState<
@@ -445,8 +230,6 @@ function Dashboard({
   const siteNameInputRef = useRef<HTMLInputElement | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
   const analyticsScrollTimerRef = useRef<number | null>(null);
-  const [loadingSites, setLoadingSites] = useState(false);
-  const [sitesError, setSitesError] = useState<string | null>(null);
   const [siteName, setSiteName] = useState("");
   const [siteGeometryInput, setSiteGeometryInput] = useState("");
   const [coordinateInput, setCoordinateInput] = useState(
@@ -474,6 +257,8 @@ function Dashboard({
   const [darkMode, setDarkMode] = useState(true);
   const [creatingSite, setCreatingSite] = useState(false);
   const [createSiteError, setCreateSiteError] = useState<string | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [siteSearch, setSiteSearch] = useState("");
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? "dark" : "light";
@@ -483,22 +268,21 @@ function Dashboard({
     setThumbnailFailed(false);
   }, [selectedSiteId]);
 
-  const loadProjects = useCallback(async () => {
-    setLoadingProjects(true);
-    setProjectError(null);
-    try {
-      const data = await request<Project[]>("/projects", {}, token);
-      setProjects(data);
-    } catch (requestError) {
-      setProjectError((requestError as Error).message);
-    } finally {
-      setLoadingProjects(false);
-    }
-  }, [token]);
-
+  // Close analytics drawer with Escape key
   useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
+    if (!selectedSiteId) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelectedSiteId(null);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedSiteId]);
 
   useEffect(() => {
     if (projects.length === 0) {
@@ -517,8 +301,6 @@ function Dashboard({
   useEffect(() => {
     setSelectedSiteId(null);
     setThumbnailFailed(false);
-    setSiteAnalytics(null);
-    setAnalyticsError(null);
     setDrawStats(null);
     setHoverSiteInfo(null);
     setSiteGeometryInput("");
@@ -527,90 +309,6 @@ function Dashboard({
     drawRef.current?.deleteAll();
     changeDrawMode("simple_select");
   }, [selectedProjectId]);
-
-  const loadSites = useCallback(async () => {
-    if (!selectedProjectId) {
-      setSites([]);
-      setSitesError(null);
-      return;
-    }
-
-    setLoadingSites(true);
-    setSitesError(null);
-
-    try {
-      const data = await request<Site[]>(
-        `/projects/${selectedProjectId}/sites`,
-        {},
-        token,
-      );
-      setSites(data);
-    } catch (requestError) {
-      setSitesError((requestError as Error).message);
-    } finally {
-      setLoadingSites(false);
-    }
-  }, [selectedProjectId, token]);
-
-  useEffect(() => {
-    void loadSites();
-  }, [loadSites]);
-
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setProjectAnalytics(null);
-      return;
-    }
-
-    let cancelled = false;
-    void request<ProjectAnalytics>(
-      `/projects/${selectedProjectId}/analytics`,
-      {},
-      token,
-    ).then((data) => {
-      if (!cancelled) {
-        setProjectAnalytics(data);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedProjectId, token]);
-
-  useEffect(() => {
-    if (!selectedSiteId) {
-      setSiteAnalytics(null);
-      setAnalyticsError(null);
-      setAnalyticsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setAnalyticsLoading(true);
-    setAnalyticsError(null);
-    void request<SiteAnalytics>(`/sites/${selectedSiteId}/analytics`, {}, token)
-      .then((data) => {
-        if (!cancelled) {
-          setSiteAnalytics(ensureMockHistory(data));
-        }
-      })
-      .catch((requestError) => {
-        if (!cancelled) {
-          setSiteAnalytics(null);
-          setAnalyticsError((requestError as Error).message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setAnalyticsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSiteId, token]);
 
   function handleAnalyticsScroll() {
     setAnalyticsScrolling(true);
@@ -628,7 +326,6 @@ function Dashboard({
 
     setSeedingMetrics(true);
     setSeedMessage(null);
-    setAnalyticsError(null);
     try {
       const result = await request<{ created_count: number }>(
         `/projects/${selectedProjectId}/analytics/seed`,
@@ -640,22 +337,12 @@ function Dashboard({
           ? "Demo metrics already exist."
           : `Created ${result.created_count} demo metric rows.`,
       );
-      const projectData = await request<ProjectAnalytics>(
-        `/projects/${selectedProjectId}/analytics`,
-        {},
-        token,
-      );
-      setProjectAnalytics(projectData);
+      reloadProjectAnalytics();
       if (selectedSiteId) {
-        const siteData = await request<SiteAnalytics>(
-          `/sites/${selectedSiteId}/analytics`,
-          {},
-          token,
-        );
-        setSiteAnalytics(ensureMockHistory(siteData));
+        reloadSiteAnalytics();
       }
-    } catch (requestError) {
-      setAnalyticsError((requestError as Error).message);
+    } catch {
+      setSeedMessage("Failed to seed metrics.");
     } finally {
       setSeedingMetrics(false);
     }
@@ -663,7 +350,7 @@ function Dashboard({
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setProjectError(null);
+    setCreateProjectError(null);
 
     try {
       const project = await request<Project>(
@@ -679,7 +366,7 @@ function Dashboard({
       setName("");
       setDescription("");
     } catch (requestError) {
-      setProjectError((requestError as Error).message);
+      setCreateProjectError((requestError as Error).message);
     }
   }
 
@@ -750,27 +437,12 @@ function Dashboard({
       setDrawStats(null);
       drawRef.current?.deleteAll();
       changeDrawMode("simple_select");
-      await loadSites();
+      await reloadSites();
     } catch (requestError) {
       setCreateSiteError((requestError as Error).message);
     } finally {
       setCreatingSite(false);
     }
-  }
-
-  function calculateAreaFromRing(ring: number[][]): number | null {
-    if (ring.length < 4) {
-      return null;
-    }
-
-    let area = 0;
-    for (let index = 0; index < ring.length - 1; index += 1) {
-      const [longitudeA, latitudeA] = ring[index];
-      const [longitudeB, latitudeB] = ring[index + 1];
-      area += longitudeA * latitudeB - longitudeB * latitudeA;
-    }
-
-    return Math.abs(area) * 0.5 * 12364;
   }
 
   function calculateDrawArea(feature: GeoJSON.Feature): number | null {
@@ -981,29 +653,10 @@ function Dashboard({
     }
   }
 
-  const projectCountLabel = useMemo(
-    () => `${projects.length} project${projects.length === 1 ? "" : "s"}`,
-    [projects.length],
-  );
-
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   );
-
-  function getSitePoint(site: Site): [number, number] {
-    const ring = site.geometry.coordinates[0];
-    if (ring.length === 0) {
-      return [0, 0];
-    }
-
-    const uniqueRing = ring.length > 1 ? ring.slice(0, -1) : ring;
-    const longitude =
-      uniqueRing.reduce((sum, [value]) => sum + value, 0) / uniqueRing.length;
-    const latitude =
-      uniqueRing.reduce((sum, [, value]) => sum + value, 0) / uniqueRing.length;
-    return [longitude, latitude];
-  }
 
   const siteGeoJson = useMemo<SiteFeatureCollection>(
     () => ({
@@ -1073,7 +726,7 @@ function Dashboard({
 
   const siteCountLabel = `${sites.length} site${sites.length === 1 ? "" : "s"}`;
 
-  const visibleMetrics = useMemo(() => {
+  const visibleMetrics = useMemo<SiteMetric[]>(() => {
     if (!siteAnalytics) {
       return [];
     }
@@ -1086,7 +739,7 @@ function Dashboard({
   const carbonForecast = siteAnalytics
     ? linearForecast(siteAnalytics.metrics, 3)
     : [];
-  const visibleLabels = visibleMetrics.map((metric) =>
+  const visibleLabels = visibleMetrics.map((metric: SiteMetric) =>
     formatMonthLabel(metric.period),
   );
   const forecastLabels = carbonForecast.map((point) =>
@@ -1103,70 +756,37 @@ function Dashboard({
   const carbonChartData = {
     labels: chartLabels,
     datasets: [
-      {
-        label: "Carbon (tCO2e)",
-        data: [
-          ...carbonValues,
-          ...Array.from({ length: carbonForecast.length }, () => null),
-        ],
-        borderColor: "#00e5a0",
-        backgroundColor: "#00e5a026",
-        fill: true,
-        tension: 0.3,
-      },
-      {
-        label: "Forecast",
-        data: [
-          ...Array.from(
-            { length: Math.max(0, visibleMetrics.length - 1) },
-            () => null,
-          ),
-          carbonValues[carbonValues.length - 1] ?? null,
-          ...carbonForecast.map((point) => point.value),
-        ],
-        borderColor: "#f59e0b",
-        backgroundColor: "transparent",
-        borderDash: [6, 5],
-        pointRadius: 2,
-        fill: false,
-        tension: 0.3,
-      },
+      createCarbonDataset(carbonValues, carbonForecast.length),
+      createForecastDataset(carbonValues, carbonForecast),
     ],
   };
 
   const biodiversityChartData = {
     labels: visibleLabels,
-    datasets: [
-      {
-        label: "Biodiversity (/100)",
-        data: biodiversityValues,
-        borderColor: "#f59e0b",
-        backgroundColor: "#f59e0b26",
-        fill: true,
-        tension: 0.3,
-      },
-    ],
+    datasets: [createBiodiversityDataset(biodiversityValues)],
   };
 
   const deltaBarData = {
     labels: visibleLabels,
     datasets: [
       {
-        label: "Carbon change (tCO2e)",
-        data: visibleMetrics.map((metric, index) => {
+        label: "Carbon change (tCO₂e)",
+        data: visibleMetrics.map((metric: SiteMetric, index: number) => {
           if (index === 0) return null;
           return (
             (metric.carbon_tonnes_co2e ?? 0) -
             (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0)
           );
         }),
-        backgroundColor: visibleMetrics.map((metric, index) => {
-          if (index === 0) return "transparent";
-          const delta =
-            (metric.carbon_tonnes_co2e ?? 0) -
-            (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0);
-          return delta <= 0 ? "#00e5a0" : "#ef4444";
-        }),
+        backgroundColor: visibleMetrics.map(
+          (metric: SiteMetric, index: number) => {
+            if (index === 0) return "transparent";
+            const delta =
+              (metric.carbon_tonnes_co2e ?? 0) -
+              (visibleMetrics[index - 1].carbon_tonnes_co2e ?? 0);
+            return delta <= 0 ? "#10b981" : "#ef4444";
+          },
+        ),
         borderRadius: 5,
         barPercentage: 0.85,
         categoryPercentage: 0.82,
@@ -1235,7 +855,7 @@ function Dashboard({
     if (!siteAnalytics) return;
     const rows = [
       ["period", "carbon_tonnes_co2e", "biodiversity_score", "carbon_delta"],
-      ...visibleMetrics.map((metric, index) => {
+      ...visibleMetrics.map((metric: SiteMetric, index: number) => {
         const previous = visibleMetrics[index - 1];
         const delta =
           index === 0 || !previous
@@ -1278,10 +898,8 @@ function Dashboard({
     );
   }
 
-  useEffect(() => {
-    if (!mapRef.current || sites.length === 0) {
-      return;
-    }
+  function fitAllSites() {
+    if (!mapRef.current || sites.length === 0) return;
 
     let minLon = Infinity;
     let maxLon = -Infinity;
@@ -1289,7 +907,9 @@ function Dashboard({
     let maxLat = -Infinity;
 
     for (const site of sites) {
-      for (const [lon, lat] of site.geometry.coordinates[0]) {
+      const ring = site.geometry.coordinates[0];
+      if (!ring) continue;
+      for (const [lon, lat] of ring as number[][]) {
         minLon = Math.min(minLon, lon);
         maxLon = Math.max(maxLon, lon);
         minLat = Math.min(minLat, lat);
@@ -1308,7 +928,44 @@ function Dashboard({
           [minLon, minLat],
           [maxLon, maxLat],
         ],
-        { padding: 48, duration: 500 },
+        { padding: 72, maxZoom: 12, duration: 600 },
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (!mapRef.current || sites.length === 0) {
+      return;
+    }
+
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+
+    for (const site of sites) {
+      const ring = site.geometry.coordinates[0];
+      if (!ring) continue;
+      for (const [lon, lat] of ring as number[][]) {
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      }
+    }
+
+    if (
+      Number.isFinite(minLon) &&
+      Number.isFinite(maxLon) &&
+      Number.isFinite(minLat) &&
+      Number.isFinite(maxLat)
+    ) {
+      mapRef.current.fitBounds(
+        [
+          [minLon, minLat],
+          [maxLon, maxLat],
+        ],
+        { padding: 48, maxZoom: 12, duration: 500 },
       );
     }
   }, [sites]);
@@ -1431,41 +1088,57 @@ function Dashboard({
       className={`dashboard-layout ${darkMode ? "theme-dark" : ""}`}
       onClick={handleDashboardClick}
     >
-      <aside className="theme-switcher" aria-label="Colour theme">
-        <button
-          type="button"
-          className={
-            !darkMode ? "theme-button theme-button-active" : "theme-button"
-          }
-          onClick={() => setDarkMode(false)}
-          aria-label="Use light theme"
-          title="Light theme"
-        >
-          <ThemeIcon kind="sun" />
-        </button>
-        <button
-          type="button"
-          className={
-            darkMode ? "theme-button theme-button-active" : "theme-button"
-          }
-          onClick={() => setDarkMode(true)}
-          aria-label="Use dark theme"
-          title="Dark theme"
-        >
-          <ThemeIcon kind="moon" />
-        </button>
-      </aside>
       <header>
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <h1>Darukaa.Earth</h1>
-          <p>{projectCountLabel}</p>
+          {selectedProject ? (
+            <span
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.9rem",
+                fontWeight: 500,
+              }}
+            >
+              / {selectedProject.name}
+            </span>
+          ) : null}
         </div>
         <div className="header-actions">
+          <ThemeToggle darkMode={darkMode} onToggle={setDarkMode} />
           <button className="link" onClick={onLogout}>
             Logout
           </button>
         </div>
       </header>
+
+      {projectAnalytics ? (
+        <section className="project-summary-strip">
+          <div className="summary-stat">
+            <strong>{projectAnalytics.total_area_hectares.toFixed(1)}</strong>
+            <span>Total area (ha)</span>
+          </div>
+          <div className="summary-stat">
+            <strong>
+              {projectAnalytics.total_latest_carbon_tonnes_co2e !== null
+                ? projectAnalytics.total_latest_carbon_tonnes_co2e.toFixed(1)
+                : "—"}
+            </strong>
+            <span>Latest carbon (tCO₂e)</span>
+          </div>
+          <div className="summary-stat">
+            <strong>
+              {projectAnalytics.average_latest_biodiversity_score !== null
+                ? projectAnalytics.average_latest_biodiversity_score.toFixed(2)
+                : "—"}
+            </strong>
+            <span>Avg biodiversity</span>
+          </div>
+          <div className="summary-stat">
+            <strong>{projectAnalytics.sites_with_metrics}</strong>
+            <span>Sites with data</span>
+          </div>
+        </section>
+      ) : null}
 
       <section className="card project-create-card">
         <h2>Create project</h2>
@@ -1492,39 +1165,79 @@ function Dashboard({
 
           <button type="submit">Add project</button>
         </form>
-        {projectError ? <p className="error">{projectError}</p> : null}
+        {createProjectError ? (
+          <p className="error">{createProjectError}</p>
+        ) : null}
       </section>
 
       <section className="card projects-card">
         <h2>Projects</h2>
-        {loadingProjects ? <p>Loading projects...</p> : null}
+        {loadingProjects ? (
+          <div className="loading-indicator" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading projects…</span>
+          </div>
+        ) : null}
         {!loadingProjects && projects.length === 0 ? (
-          <p>No projects yet. Create first project.</p>
+          <div className="empty-state">
+            <p className="empty-state-title">No projects yet</p>
+            <p className="empty-state-hint">
+              Create your first project using the form above to start tracking
+              carbon and biodiversity sites.
+            </p>
+          </div>
         ) : null}
         {!loadingProjects && projects.length > 0 ? (
           <>
+            <div className="search-wrap">
+              <input
+                className="search-input"
+                type="search"
+                placeholder="Search projects…"
+                value={projectSearch}
+                onChange={(event) => setProjectSearch(event.target.value)}
+                aria-label="Search projects"
+              />
+            </div>
             <ul className="project-list">
-              {projects.map((project) => (
-                <li
-                  key={project.id}
-                  className={
-                    project.id === selectedProjectId ? "selected-item" : ""
-                  }
-                >
-                  <button
-                    className="project-item"
-                    type="button"
-                    onClick={() =>
-                      setSelectedProjectId((current) =>
-                        current === project.id ? null : project.id,
-                      )
+              {projects
+                .filter((project) =>
+                  project.name
+                    .toLowerCase()
+                    .includes(projectSearch.toLowerCase()),
+                )
+                .map((project) => (
+                  <li
+                    key={project.id}
+                    className={
+                      project.id === selectedProjectId ? "selected-item" : ""
                     }
                   >
-                    <strong>{project.name}</strong>
-                    <span>{project.description || "No description"}</span>
-                  </button>
+                    <button
+                      className="project-item"
+                      type="button"
+                      onClick={() =>
+                        setSelectedProjectId((current) =>
+                          current === project.id ? null : project.id,
+                        )
+                      }
+                    >
+                      <strong>{project.name}</strong>
+                      <span>{project.description || "No description"}</span>
+                    </button>
+                  </li>
+                ))}
+              {projects.filter((project) =>
+                project.name
+                  .toLowerCase()
+                  .includes(projectSearch.toLowerCase()),
+              ).length === 0 ? (
+                <li>
+                  <p className="search-no-results">
+                    No projects match &ldquo;{projectSearch}&rdquo;
+                  </p>
                 </li>
-              ))}
+              ) : null}
             </ul>
           </>
         ) : null}
@@ -1568,50 +1281,128 @@ function Dashboard({
           </div>
         ) : null}
 
-        {loadingSites ? <p>Loading sites...</p> : null}
+        {loadingSites ? (
+          <div className="loading-indicator" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading sites…</span>
+          </div>
+        ) : null}
         {sitesError ? <p className="error">{sitesError}</p> : null}
 
         {!loadingSites &&
         !sitesError &&
         selectedProject &&
         sites.length === 0 ? (
-          <p>No sites yet for this project.</p>
+          <div className="empty-state">
+            <p className="empty-state-title">No sites yet</p>
+            <p className="empty-state-hint">
+              Use the map or coordinate entry below to draw your first site
+              boundary for this project.
+            </p>
+          </div>
         ) : null}
 
         {!loadingSites && !sitesError && sites.length > 0 ? (
-          <ul className="site-list">
-            {sites.map((site) => (
-              <li
-                key={site.id}
-                className={site.id === selectedSiteId ? "selected-item" : ""}
-              >
-                <button
-                  className="site-item"
-                  type="button"
-                  onClick={() =>
-                    selectedSiteId === site.id
-                      ? setSelectedSiteId(null)
-                      : focusSite(site)
-                  }
-                >
-                  <strong>{site.name}</strong>
-                  <span>Area: {site.area_hectares.toFixed(2)} ha</span>
-                  <span className="site-analytics-cta">View analytics →</span>
-                  {projectAnalytics ? (
-                    <span className="site-trend">
-                      <Sparkline
-                        values={
-                          projectAnalytics.sites.find(
-                            (summary) => summary.site_id === site.id,
-                          )?.carbon_history ?? []
+          <>
+            <div className="search-wrap">
+              <input
+                className="search-input"
+                type="search"
+                placeholder="Search sites…"
+                value={siteSearch}
+                onChange={(event) => setSiteSearch(event.target.value)}
+                aria-label="Search sites"
+              />
+            </div>
+            <ul className="site-list">
+              {sites
+                .filter((site) =>
+                  site.name.toLowerCase().includes(siteSearch.toLowerCase()),
+                )
+                .map((site) => {
+                  const siteAnalyticsData = projectAnalytics?.sites.find(
+                    (summary: ProjectSiteAnalytics) =>
+                      summary.site_id === site.id,
+                  );
+                  return (
+                    <li
+                      key={site.id}
+                      className={
+                        site.id === selectedSiteId ? "selected-site-card" : ""
+                      }
+                    >
+                      <button
+                        className="site-card-button"
+                        type="button"
+                        onClick={() =>
+                          selectedSiteId === site.id
+                            ? setSelectedSiteId(null)
+                            : focusSite(site)
                         }
-                      />
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
+                      >
+                        <div className="site-card-header">
+                          <h3>{site.name}</h3>
+                          <span className="site-card-area">
+                            {site.area_hectares.toFixed(2)} ha
+                          </span>
+                        </div>
+
+                        <div className="site-card-metrics">
+                          <div className="site-card-metric">
+                            <span className="metric-label">Carbon</span>
+                            <span className="metric-value">
+                              {siteAnalyticsData?.latest_carbon_tonnes_co2e !==
+                                null &&
+                              siteAnalyticsData?.latest_carbon_tonnes_co2e !==
+                                undefined
+                                ? `${siteAnalyticsData.latest_carbon_tonnes_co2e.toFixed(1)} t`
+                                : "—"}
+                            </span>
+                          </div>
+                          <div className="site-card-metric">
+                            <span className="metric-label">Biodiversity</span>
+                            <span className="metric-value">
+                              {siteAnalyticsData?.latest_biodiversity_score !==
+                                null &&
+                              siteAnalyticsData?.latest_biodiversity_score !==
+                                undefined
+                                ? siteAnalyticsData.latest_biodiversity_score.toFixed(
+                                    2,
+                                  )
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {siteAnalyticsData?.carbon_history &&
+                        siteAnalyticsData.carbon_history.length > 0 ? (
+                          <div className="site-trend">
+                            <Sparkline
+                              values={siteAnalyticsData.carbon_history}
+                            />
+                          </div>
+                        ) : null}
+
+                        <div className="site-card-cta">
+                          <span className="site-analytics-cta">
+                            View analytics →
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              {sites.filter((site) =>
+                site.name.toLowerCase().includes(siteSearch.toLowerCase()),
+              ).length === 0 ? (
+                <li>
+                  <p className="search-no-results">
+                    No sites match &ldquo;{siteSearch}&rdquo;
+                  </p>
+                </li>
+              ) : null}
+            </ul>
+          </>
         ) : null}
       </section>
 
@@ -1689,6 +1480,32 @@ function Dashboard({
                 onClick={() => startDrawMode("draw_freehand")}
               >
                 Freehand
+              </button>
+              <button
+                type="button"
+                className="mode-button"
+                onClick={() => {
+                  drawRef.current?.deleteAll();
+                  changeDrawMode("simple_select");
+                  setDrawTool(null);
+                  setDraftPoints([]);
+                  setSiteGeometryInput("");
+                  setDrawStats(null);
+                  setCreateSiteError(null);
+                }}
+                disabled={!drawTool && siteGeometryInput === ""}
+                title="Clear drawn polygon"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="mode-button"
+                onClick={fitAllSites}
+                disabled={sites.length === 0}
+                title="Fit map to all sites"
+              >
+                Fit All
               </button>
             </div>
             {drawStats ? (
@@ -1774,7 +1591,7 @@ function Dashboard({
                 rows={5}
                 spellCheck={false}
                 placeholder={
-                  "77.58, 12.97\\n77.60, 12.97\\n77.60, 12.99\\n77.58, 12.99"
+                  "77.58, 12.97\n77.60, 12.97\n77.60, 12.99\n77.58, 12.99"
                 }
               />
               <small>
@@ -1878,10 +1695,24 @@ function Dashboard({
           ) : null}
         </div>
 
-        {analyticsLoading ? <p>Loading analytics...</p> : null}
+        {analyticsLoading ? (
+          <div
+            className="loading-indicator loading-indicator--lg"
+            aria-live="polite"
+          >
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading analytics…</span>
+          </div>
+        ) : null}
         {analyticsError ? <p className="error">{analyticsError}</p> : null}
         {!analyticsLoading && !analyticsError && !selectedSiteId ? (
-          <p className="analytics-empty">Select a site from the list or map.</p>
+          <div className="analytics-empty">
+            <p className="empty-state-title">No site selected</p>
+            <p className="empty-state-hint">
+              Click a site card or a polygon on the map to open its analytics
+              panel.
+            </p>
+          </div>
         ) : null}
         {!analyticsLoading &&
         !analyticsError &&
@@ -1889,7 +1720,11 @@ function Dashboard({
         siteAnalytics &&
         siteAnalytics.metrics.length === 0 ? (
           <div className="analytics-empty">
-            <p>No metrics available for this site yet.</p>
+            <p className="empty-state-title">No metrics yet</p>
+            <p className="empty-state-hint">
+              This site has no performance data. Seed demo metrics to explore
+              the carbon and biodiversity charts.
+            </p>
             {seedMessage ? <small>{seedMessage}</small> : null}
           </div>
         ) : null}
@@ -2042,15 +1877,7 @@ function Dashboard({
               analyticsChartMode === "carbon" ? (
                 <div className="analytics-chart chart-block">
                   <h3>Carbon trend · tCO2e</h3>
-                  <Line
-                    data={carbonChartData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      interaction: { mode: "index", intersect: false },
-                      scales: { y: { suggestedMin: 900 } },
-                    }}
-                  />
+                  <Line data={carbonChartData} options={carbonChartOptions} />
                 </div>
               ) : null}
               {analyticsChartMode === "all" ||
@@ -2059,26 +1886,14 @@ function Dashboard({
                   <h3>Biodiversity trend · /100 · historical only</h3>
                   <Line
                     data={biodiversityChartData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      interaction: { mode: "index", intersect: false },
-                      scales: { y: { suggestedMin: 72, max: 100 } },
-                    }}
+                    options={biodiversityChartOptions}
                   />
                 </div>
               ) : null}
             </div>
             <div className="analytics-chart delta-chart chart-block">
               <h3>Month-over-month carbon change</h3>
-              <Bar
-                data={deltaBarData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  scales: { y: { beginAtZero: true } },
-                }}
-              />
+              <Bar data={deltaBarData} options={deltaBarOptions} />
             </div>
           </>
         ) : null}
