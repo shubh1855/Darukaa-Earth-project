@@ -492,6 +492,7 @@ select:focus {
   background: transparent;
   color: inherit;
   border: none;
+  cursor: pointer;
 }
 
 .site-card-button:hover {
