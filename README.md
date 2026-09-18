@@ -30,20 +30,67 @@ The product specification is in [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md). 
 - API: [darukaa-earth-api-ha0j.onrender.com](https://darukaa-earth-api-ha0j.onrender.com)
 - Health: [API health](https://darukaa-earth-api-ha0j.onrender.com/api/health)
 - Submission brief: [`docs/SUBMISSION.md`](docs/SUBMISSION.md)
+- Deployment guide: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 
 The deployed reviewer environment uses Render Static Site, Render Web Service, and Render Postgres with PostGIS. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for release steps.
 
 ## Architecture
 
-```text
-React + TypeScript + Vite
-        |
-        | REST + JWT
-        v
-FastAPI + SQLAlchemy
-        |
-        v
-PostgreSQL + PostGIS
+### Application architecture
+
+```mermaid
+flowchart TD
+    Browser[React + TypeScript + Vite]
+    Map[Mapbox GL JS map]
+    Charts[Chart.js analytics]
+    API[FastAPI REST API]
+    Auth[JWT authentication]
+    ORM[SQLAlchemy ORM]
+    Migrations[Alembic migrations]
+    DB[(PostgreSQL + PostGIS)]
+
+    Browser --> Map
+    Browser --> Charts
+    Browser -->|REST + bearer token| API
+    API --> Auth
+    API --> ORM
+    API --> Migrations
+    ORM --> DB
+    Migrations --> DB
+```
+
+### Production deployment
+
+```mermaid
+flowchart LR
+    Reviewer[Reviewer browser]
+    Frontend[Render Static Site]
+    API[Render Web Service]
+    Database[(Render Postgres with PostGIS)]
+    Mapbox[Mapbox GL JS]
+
+    Reviewer --> Frontend
+    Frontend -->|HTTPS REST + JWT| API
+    Frontend -->|Map rendering| Mapbox
+    API -->|Private PostgreSQL connection| Database
+```
+
+### Analytics request flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as React dashboard
+    participant API as FastAPI API
+    participant DB as PostgreSQL/PostGIS
+
+    User->>UI: Select project and site
+    UI->>API: GET /api/sites/{id}/analytics
+    API->>API: Validate JWT and ownership
+    API->>DB: Query ordered site metrics
+    DB-->>API: Geometry, area, and metrics
+    API-->>UI: Analytics response
+    UI->>UI: Render KPIs and charts
 ```
 
 Repository layout:
@@ -52,7 +99,7 @@ Repository layout:
 backend/                FastAPI service, models, routes, and tests
 frontend/               React/Vite application
 database/               Local PostGIS Docker Compose setup
-docs/                   Specification, implementation guide, and progress
+docs/                   Specification, implementation, deployment, and submission docs
 .github/workflows/       GitHub Actions CI
 .husky/                 Pre-commit hook
 ```
